@@ -1,0 +1,13 @@
+
+fn fib int -> int do
+    if dup 1 > do 
+        dup 2 - fib swap 
+            1 - fib +
+    end
+end
+
+// Print the first 20 numbers of the fibonacci sequence
+0 while dup 20 < do
+    dup fib putu
+    1 + 
+end drop
