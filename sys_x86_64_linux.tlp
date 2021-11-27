@@ -1,0 +1,64 @@
+struct FileDesc
+    int 
+end
+
+fn sys_ok? int -> bool do
+    0 swap <=
+end
+
+fn sys_exit
+    int 
+do
+    60 syscall1 drop
+end 
+
+fn sys_write 
+    int ptr FileDesc // size ptr FileDesc
+    -> 
+    int bool
+do
+    FileDesc.0 1 syscall3 dup sys_ok?
+end
+
+fn sys_open
+    int int ptr
+    -> 
+    FileDesc bool
+do 
+    2 syscall3 
+    dup sys_ok?
+    swap as FileDesc
+    swap
+    
+end
+
+fn sys_close
+    FileDesc -> bool
+do
+    FileDesc.0 3 syscall1 sys_ok?
+end
+
+fn sys_unlink
+    ptr -> bool
+do
+    // ptr result
+    87 syscall1 sys_ok?
+end  
+
+fn sys_read 
+    int ptr FileDesc
+    -> 
+    int bool
+do
+    0 syscall3 dup sys_ok?
+end
+
+fn sys_stat 
+    ptr ptr // statbuf filename
+    -> 
+    bool
+do
+
+    4 syscall2 sys_ok?
+
+end
