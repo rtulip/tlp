@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/type_check_errors/cast_unknown_type.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/type_check_errors/cast_unknown_type.tlp:1:8 [ERROR]: Unrecognized Data Type `foo`
+--------------------------
+exit code: 1

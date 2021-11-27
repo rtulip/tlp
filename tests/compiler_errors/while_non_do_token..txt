@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/while_non_do_token.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/while_non_do_token.tlp:1:10 [ERROR]: Expected Keyword `DO`. Found MiscTokenKind.BOOL instead
+--------------------------
+exit code: 1

@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/while_do_eof.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/while_do_eof.tlp:1:13 [ERROR]: Unclosed `WHILE` block. Expected `END` but found end of file instead
+--------------------------
+exit code: 1

@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/struct_unknown_type_in_body.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/struct_unknown_type_in_body.tlp:1:14 [ERROR]: Unknown type `bar` in struct definition
+--------------------------
+exit code: 1

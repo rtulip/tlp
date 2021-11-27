@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/fn_redef_fn.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/fn_redef_fn.tlp:2:6 [ERROR]: Redefinition of `foo`. Previously defined here: ./tests/compiler_errors/fn_redef_fn.tlp:1:2
+--------------------------
+exit code: 1

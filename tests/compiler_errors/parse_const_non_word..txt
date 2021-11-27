@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/parse_const_non_word.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/parse_const_non_word.tlp:1:7 [ERROR]: Expected an identifier after `CONST` statement, but found MiscTokenKind.INT:1 instead
+--------------------------
+exit code: 1

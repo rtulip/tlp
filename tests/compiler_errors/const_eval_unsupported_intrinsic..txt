@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/const_eval_unsupported_intrinsic.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/const_eval_unsupported_intrinsic.tlp:1:20 [ERROR]: Intrinsic Intrinsic.PUTU is not supported in constant expressions yet.
+--------------------------
+exit code: 1

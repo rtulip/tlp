@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/only_group.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/only_group.tlp:1:5 [ERROR]: `GROUP` expects a preceding `UINT`, but found end of file instead
+--------------------------
+exit code: 1

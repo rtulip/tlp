@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/fn_multiple_arrow.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/fn_multiple_arrow.tlp:1:12 [ERROR]: Only one arrow statement can be used in function signature definition
+--------------------------
+exit code: 1

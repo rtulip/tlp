@@ -134,6 +134,29 @@ def compiler_error(predicate: bool, token: Token, msg):
         exit(1)
 
 
+def check_for_name_conflict(name: str, tok: Token, fn_meta: FunctionMeta, const_values):
+    if name in fn_meta.keys():
+        compiler_error(
+            False,
+            tok,
+            f"Redefinition of `{name}`. Previously defined here: {token_loc_str(fn_meta[name].tok)}"
+        )
+
+    if name in TypeDict.keys():
+        compiler_error(
+            False,
+            tok,
+            f"Redefinition of Type `{name}`."
+        )
+
+    if name in const_values.keys():
+        compiler_error(
+            False,
+            tok,
+            f"Redefinition of {name}. Previously defined here: {token_loc_str(const_values[name].tok)}"
+        )
+
+
 class FnDefState(Enum):
     Start = auto()
     Name = auto()
@@ -206,7 +229,6 @@ def parse_tokens_until_keywords(
                 )
 
         elif type(tok.typ) == Intrinsic:
-            assert tok.typ in Intrinsic, f"Unrecognized Intrinsic {tok}"
             compiler_error(
                 tok.typ in Intrinsic,
                 tok,
@@ -214,7 +236,14 @@ def parse_tokens_until_keywords(
             )
 
             if tok.typ == Intrinsic.CAST_TUPLE:
+                compiler_error(
+                    len(program) > 0,
+                    tok,
+                    f"`GROUP` expects a preceding `UINT`, but found end of file instead"
+                )
+
                 tuple_size_op = program.pop()
+
                 compiler_error(
                     tuple_size_op.op == OpType.PUSH_UINT,
                     tok,
@@ -280,6 +309,12 @@ def eval_const_ops(program: Program, tok: Token):
     stack = []
     program.reverse()
 
+    compiler_error(
+        len(program) > 0,
+        tok,
+        f"`CONST` body must evaluate to a single value"
+    )
+
     while len(program) > 0:
         op = program.pop()
 
@@ -342,27 +377,16 @@ def parse_const_exptr(start_tok: Token, tokens: List[Token], program: Program, f
     const_ident = tokens.pop()
 
     compiler_error(
-        const_ident.value not in const_values.keys(),
-        const_ident,
-        f"Redefinition of `CONST` {const_ident.value}"
-    )
-
-    compiler_error(
-        const_ident.value not in fn_meta.keys(),
-        const_ident,
-        f"Redefinition of `FN` {const_ident.value}"
-    )
-
-    compiler_error(
-        const_ident.value not in TypeDict.keys(),
-        const_ident,
-        f"Redefinition of `TYPE` {const_ident.value}"
-    )
-
-    compiler_error(
         const_ident.typ == MiscTokenKind.WORD,
         const_ident,
         f"Expected an identifier after `CONST` statement, but found {const_ident.typ}:{const_ident.value} instead"
+    )
+
+    check_for_name_conflict(
+        const_ident.value,
+        const_ident,
+        fn_meta,
+        const_values
     )
 
     compiler_error(
@@ -428,21 +452,15 @@ def parse_fn_from_tokens(start_tok: Token, tokens: List[Token], program: Program
 
     assert isinstance(name_tok.value, str)
     fn_name = name_tok.value
+
+    check_for_name_conflict(
+        fn_name,
+        name_tok,
+        fn_meta,
+        const_values
+    )
+
     program[start_loc].operand = fn_name
-
-    if fn_name in fn_meta.keys():
-        compiler_error(
-            False,
-            name_tok,
-            f"Redefinition of {fn_name}. Previously defined here: {token_loc_str(fn_meta[fn_name].tok)}"
-        )
-
-    if fn_name in TypeDict.keys():
-        compiler_error(
-            False,
-            name_tok,
-            f"Redefinition of Type `{fn_name}`."
-        )
 
     pops = True
 
@@ -651,6 +669,13 @@ def parse_struct_from_tokens(start_tok: Token, tokens: List[Token], program: Pro
         f"Expected struct name, but found {name_tok.typ}:{name_tok.value} instead"
     )
 
+    check_for_name_conflict(
+        name_tok.value,
+        name_tok,
+        fn_meta,
+        const_values
+    )
+
     compiler_error(
         len(tokens) > 0,
         name_tok,
@@ -658,20 +683,6 @@ def parse_struct_from_tokens(start_tok: Token, tokens: List[Token], program: Pro
     )
 
     assert isinstance(name_tok.value, str)
-
-    if name_tok.value in TypeDict.keys():
-        compiler_error(
-            False,
-            name_tok,
-            f"Redefinition of type {name_tok.value}"
-        )
-
-    if name_tok.value in fn_meta.keys():
-        compiler_error(
-            False,
-            name_tok,
-            f"Redefinition of name `{name_tok.value}`. Previously defined {token_loc_str(fn_meta[name_tok.value].tok)} "
-        )
 
     members = []
 
@@ -686,7 +697,11 @@ def parse_struct_from_tokens(start_tok: Token, tokens: List[Token], program: Pro
             if tok.value in TypeDict.keys():
                 members.append(TypeDict[tok.value])
             else:
-                members.append(DataType(Ident=tok.value, Generic=True))
+                compiler_error(
+                    False,
+                    tok,
+                    f"Unknown type `{tok.value}` in struct definition"
+                )
         else:
             compiler_error(
                 False,
@@ -750,7 +765,7 @@ def parse_if_block_from_tokens(start_tok: Token, tokens: List[Token], program: P
     compiler_error(
         len(tokens) > 0,
         tok_do,
-        f"Unclosed `IF` block. Expected `DO`"
+        f"Unclosed `IF` block. Expected `END` after `DO`"
     )
 
     jumps.append(len(program))
@@ -791,11 +806,7 @@ def parse_if_block_from_tokens(start_tok: Token, tokens: List[Token], program: P
             elif tok.typ == Keyword.END:
                 program[idx].operand = len(program)
             else:
-                compiler_error(
-                    False,
-                    tok,
-                    f"Unclosed `IF` block. Expected `END` found {program[idx].tok.typ} instead"
-                )
+                assert False, "Unreachable..."
 
         if tok.typ == Keyword.ELSE:
             # Add the else to the jump stack
@@ -1290,14 +1301,10 @@ def type_check_program(
                     compiler_error(
                         op.tok.value in TypeDict.keys(),
                         op.tok,
-                        f"Unrecognized Data Type {op.tok.value}"
+                        f"Unrecognized Data Type `{op.tok.value}`"
                     )
                     struct_t = TypeDict[op.tok.value]
-                    compiler_error(
-                        struct_t.Struct and struct_t in StructMembers.keys(),
-                        op.tok,
-                        f"{struct_t.Ident} is not a struct..."
-                    )
+                    assert struct_t.Struct and struct_t in StructMembers.keys()
 
                     sig = Signature(
                         pops=StructMembers[struct_t].copy(),
@@ -1352,14 +1359,10 @@ def type_check_program(
                     compiler_error(
                         t.Ident.startswith("AnonStruct_"),
                         op.tok,
-                        f"Expected to find an `GROUP` on the top of the stack. Found {t} instead"
+                        f"Expected to find an `GROUP` on the top of the stack. Found {t.Ident} instead"
                     )
 
-                    compiler_error(
-                        t in StructMembers.keys(),
-                        op.tok,
-                        f"{t} isn't a struct?"
-                    )
+                    assert t in StructMembers.keys()
 
                     compiler_error(
                         len(StructMembers[t]) > op.tok.value,

@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/parse_fn_non_word.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/parse_fn_non_word.tlp:1:4 [ERROR]: Expected function name, found MiscTokenKind.INT instead
+--------------------------
+exit code: 1

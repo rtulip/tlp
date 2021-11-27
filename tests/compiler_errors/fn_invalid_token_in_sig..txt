@@ -1,0 +1,8 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/fn_invalid_token_in_sig.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/fn_invalid_token_in_sig.tlp:1:20 [ERROR]: Unexpected token in function signature definition: MiscTokenKind.STRING:Hello World.
+    [Note]: Expected type names, `ARROW` or `DO`.
+--------------------------
+exit code: 1

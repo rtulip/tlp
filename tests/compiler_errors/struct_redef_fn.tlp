@@ -1,0 +1,2 @@
+fn foo do end
+struct foo int end

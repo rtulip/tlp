@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/if_else_eof.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/if_else_eof.tlp:1:15 [ERROR]: Expected Keyword `DO` or `END` after `ELSE`, but found end of file instead
+--------------------------
+exit code: 1

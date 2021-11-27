@@ -1,0 +1,3 @@
+fn foo do end 
+
+const CALLS_FOO foo end

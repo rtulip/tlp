@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/type_check_errors/insufficient_elements_to_group.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/type_check_errors/insufficient_elements_to_group.tlp:1:7 [ERROR]: Grouping 1 elements requires there be at least 1 elements on the stack
+--------------------------
+exit code: 1

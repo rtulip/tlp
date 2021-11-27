@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/if_cond_do_eof.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/if_cond_do_eof.tlp:1:10 [ERROR]: Unclosed `IF` block. Expected `END` after `DO`
+--------------------------
+exit code: 1

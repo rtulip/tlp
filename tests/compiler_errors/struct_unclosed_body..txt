@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/struct_unclosed_body.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/struct_unclosed_body.tlp:1:14 [ERROR]: Unclosed struct definition. Expected `END`, but found end of file instead
+--------------------------
+exit code: 1

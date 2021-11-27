@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/struct_non_type_in_body.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/struct_non_type_in_body.tlp:1:12 [ERROR]: Unexpected token during struct definition. Expected type identifiers or `END`, but found MiscTokenKind.INT:1 instead
+--------------------------
+exit code: 1

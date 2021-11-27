@@ -1,0 +1,12 @@
+args: ['python3', 'tulip.py', './tests/type_check_errors/generic_type_resolution_fail.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/type_check_errors/generic_type_resolution_fail.tlp:5:10 [ERROR]: 
+        Generic Type Resolution Failure.
+        [Note]: Generic `T` was assigned `int` yet `bool` was found
+        [Note]: Signature: [DataType(Ident='T', Generic=True, Struct=False, Size=1), DataType(Ident='T', Generic=True, Struct=False, Size=1)]
+        [Note]: Stack    : [DataType(Ident='int', Generic=False, Struct=False, Size=1), DataType(Ident='bool', Generic=False, Struct=False, Size=1)]
+                        
+--------------------------
+exit code: 1

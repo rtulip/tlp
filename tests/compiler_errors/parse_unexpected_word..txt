@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/parse_unexpected_word.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/parse_unexpected_word.tlp:1:5 [ERROR]: Unrecognized WORD Hello.
+--------------------------
+exit code: 1

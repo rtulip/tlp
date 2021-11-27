@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/const_eval_push_many.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/const_eval_push_many.tlp:1:13 [ERROR]: `CONST` expressions must evaluate to a single type
+--------------------------
+exit code: 1

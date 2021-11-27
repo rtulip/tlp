@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/if_unclosed_else_block.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/if_unclosed_else_block.tlp:2:10 [ERROR]: Expected Keyword `DO` or `END` after `ELSE`
+--------------------------
+exit code: 1

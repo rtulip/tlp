@@ -1,0 +1,5 @@
+fn foo T T do 
+    drop drop
+end
+
+1 true foo

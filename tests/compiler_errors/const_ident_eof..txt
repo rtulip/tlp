@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/const_ident_eof.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/const_ident_eof.tlp:1:9 [ERROR]: Expected `CONST` body, but found end of file instead
+--------------------------
+exit code: 1

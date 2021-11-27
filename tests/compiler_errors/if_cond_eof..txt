@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/if_cond_eof.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/if_cond_eof.tlp:1:7 [ERROR]: Expected Keyword `DO` after `IF`
+--------------------------
+exit code: 1
