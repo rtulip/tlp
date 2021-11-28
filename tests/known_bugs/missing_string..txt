@@ -1,0 +1,8 @@
+args: ['python3', 'tulip.py', './tests/known_bugs/missing_string.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/known_bugs/missing_string.tlp:2:5 [ERROR]: Unhandled data on the datastack.
+        [Note]: Expected an empty stack found [DataType(Ident='Str', Generic=False, Struct=True, Size=2), DataType(Ident='bool', Generic=False, Struct=False, Size=1)] instead
+--------------------------
+exit code: 1

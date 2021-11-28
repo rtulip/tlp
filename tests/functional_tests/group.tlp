@@ -1,0 +1,9 @@
+use "std.tlp"
+// [int [Str bool]]
+1 "Hello World\n" true 2 group 2 group
+
+if dup group.1 group.1 do
+    group.1 group.0 puts
+else
+    group.0 putu
+end

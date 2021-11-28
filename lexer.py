@@ -48,7 +48,7 @@ class Intrinsic(Enum):
     CAST_INT = 'as int'
     CAST_PTR = 'as ptr'
     CAST_STRUCT = 'as [a-zA-Z]\w*'
-    INNER_TUPLE = 'group.[0-9]+'
+    INNER_TUPLE = 'group\.[0-9]+'
     CAST_TUPLE = 'group'
     SYSCALL0 = 'syscall0'
     SYSCALL1 = 'syscall1'

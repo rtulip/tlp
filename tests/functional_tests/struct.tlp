@@ -1,0 +1,22 @@
+struct foo
+    int int int
+end
+
+struct bar 
+    int int
+end
+
+69 420 as bar
+30 31 32 as foo
+
+dup foo.0 putu
+dup foo.1 putu
+dup foo.2 putu
+
+swap 
+dup bar.0 putu
+dup bar.1 putu
+drop
+
+split
+putu putu putu

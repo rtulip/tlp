@@ -1456,19 +1456,25 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta):
                     out.write("    pop     rax\n")
                     out.write("    pop     rbx\n")
                     out.write("    add     rax, rbx\n")
-                    out.write("    push rax\n")
+                    out.write("    push    rax\n")
                 elif op.operand == Intrinsic.SUB:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write("    pop     rax\n")
                     out.write("    pop     rbx\n")
                     out.write("    sub     rbx, rax\n")
-                    out.write("    push rbx\n")
+                    out.write("    push    rbx\n")
+                elif op.operand == Intrinsic.LSL:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write("    pop     rcx\n")
+                    out.write("    pop     rbx\n")
+                    out.write("    shl     rbx, cl\n")
+                    out.write("    push    rbx\n")
                 elif op.operand == Intrinsic.OR:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write("    pop     rax\n")
                     out.write("    pop     rbx\n")
                     out.write("    or      rbx, rax\n")
-                    out.write("    push rbx\n")
+                    out.write("    push    rbx\n")
                 elif op.operand == Intrinsic.PUTU:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write("    pop     rdi\n")
@@ -1663,6 +1669,11 @@ if __name__ == "__main__":
 
     filepath = sys.argv[1]
     tokens = tokenize(filepath)
+    # print("-------------------------------------------")
+    # for i, tok in enumerate(tokens):
+    #     print(f"{i} -- {tok.typ}: {tok.value}")
+    # print("-------------------------------------------")
+
     program, fn_meta = program_from_tokens(tokens)
     # print("-------------------------------------------")
     # for ip, op in enumerate(program):

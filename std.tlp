@@ -75,6 +75,14 @@ fn puts Str do
     end
 end
 
+fn putb bool do
+    if do
+        "True\n" puts
+    else
+        "False\n" puts
+    end
+end
+
 // Prints a String to a file.
 // Error handling message is put to stderr
 fn fputs 
