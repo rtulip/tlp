@@ -7,7 +7,7 @@ for root, dir, files in os.walk("./tests"):
     for file in files:
         if file.endswith(".tlp"):
             file_path = root+"/"+file
-            txt_file = file[:-3] + ".txt"
+            txt_file = file[:-3] + "txt"
             txt_file_path = root+"/"+txt_file
 
             compare = txt_file in files

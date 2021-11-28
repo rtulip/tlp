@@ -68,8 +68,8 @@ This is how things like ints, strings, words are recognized by the lexer.
 @unique
 class MiscTokenKind(Enum):
     INT = "[0-9]+"
-    BOOL = "true|false"
     STRING = "\"[^\"]*\""
+    BOOL = "true|false"
     WORD = "[^0-9\s]\S*"
 
 
