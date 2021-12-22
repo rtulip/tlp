@@ -23,6 +23,7 @@ class Keyword(Enum):
     ARROW = "->"
     INCLUDE = 'use'
     CONST = 'const'
+    RESERVE = 'reserve'
 
 
 """Intrinsics

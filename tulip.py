@@ -63,7 +63,7 @@ class Op():
 @ dataclass
 class Signature:
     pops: ArgList
-    puts: ArgList
+    puts: Union[ArgList, Callable[[ArgList], Optional[ArgList]]]
 
 
 @ dataclass
@@ -77,6 +77,7 @@ class Function:
 
 FunctionMeta = Dict[str, Function]
 Program = List[Op]
+ConstMap = Dict[str, Op]
 
 
 signatures = {
@@ -134,7 +135,7 @@ def compiler_error(predicate: bool, token: Token, msg):
         exit(1)
 
 
-def check_for_name_conflict(name: str, tok: Token, fn_meta: FunctionMeta, const_values):
+def check_for_name_conflict(name: str, tok: Token, fn_meta: FunctionMeta, const_values: ConstMap):
     if name in fn_meta.keys():
         compiler_error(
             False,
@@ -170,10 +171,10 @@ def parse_tokens_until_keywords(
     tokens: List[Token],
     fn_meta: FunctionMeta,
     program: Program,
-    const_values,
+    const_values: ConstMap,
     expected_keywords: List[Keyword],
 
-) -> Token:
+) -> Optional[Token]:
 
     if len(tokens) == 0:
         return None
@@ -290,6 +291,14 @@ def parse_tokens_until_keywords(
                     fn_meta,
                     const_values,
                 )
+            elif tok.typ == Keyword.RESERVE:
+                parse_reserve_statement(
+                    tok,
+                    tokens,
+                    program,
+                    fn_meta,
+                    const_values,
+                )
             else:
 
                 compiler_error(
@@ -324,14 +333,20 @@ def eval_const_ops(program: Program, tok: Token):
             if op.operand == Intrinsic.ADD:
                 b = stack.pop()
                 a = stack.pop()
+                assert isinstance(a, int)
+                assert isinstance(b, int)
                 stack.append(a+b)
             elif op.operand == Intrinsic.OR:
                 b = stack.pop()
                 a = stack.pop()
+                assert isinstance(a, int)
+                assert isinstance(b, int)
                 stack.append(a | b)
             elif op.operand == Intrinsic.LSL:
                 b = stack.pop()
                 a = stack.pop()
+                assert isinstance(a, int)
+                assert isinstance(b, int)
                 stack.append(a << b)
             else:
                 compiler_error(
@@ -364,7 +379,14 @@ def eval_const_ops(program: Program, tok: Token):
         )
 
 
-def parse_const_exptr(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values):
+def parse_reserve_statement(
+    start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap
+):
+
+    assert False, "..."
+
+
+def parse_const_expr(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap):
 
     assert start_tok.typ == Keyword.CONST
 
@@ -395,14 +417,14 @@ def parse_const_exptr(start_tok: Token, tokens: List[Token], program: Program, f
         f"Expected `CONST` body, but found end of file instead"
     )
 
-    const_ops = []
+    const_ops: Program = []
     parse_tokens_until_keywords(tokens, fn_meta, const_ops, const_values, [
                                 Keyword.END])
 
     const_values[const_ident.value] = eval_const_ops(const_ops, start_tok)
 
 
-def parse_include_statement(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values):
+def parse_include_statement(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap):
 
     compiler_error(
         len(tokens) > 0,
@@ -426,8 +448,9 @@ def parse_include_statement(start_tok: Token, tokens: List[Token], program: Prog
     tokens += included_tokens
 
 
-def parse_fn_from_tokens(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values) -> Tuple[Program, Function]:
+def parse_fn_from_tokens(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap):
     signature = Signature(pops=[], puts=[])
+    assert isinstance(signature.puts, list)
     start_loc = len(program)
     assert start_tok.typ == Keyword.FN
     program.append(Op(
@@ -535,31 +558,32 @@ def parse_fn_from_tokens(start_tok: Token, tokens: List[Token], program: Program
         end_ip=None
     )
 
-    tok = parse_tokens_until_keywords(tokens, fn_meta, program, const_values, [
-                                      Keyword.END])
+    tok_to_end = parse_tokens_until_keywords(tokens, fn_meta, program, const_values, [
+        Keyword.END])
 
     compiler_error(
-        isinstance(tok, Token),
+        isinstance(tok_to_end, Token),
         name_tok,
         "Unclosed Function definition. Expected `END`, but found end of file instead"
     )
+    assert isinstance(tok_to_end, Token)
 
     compiler_error(
-        tok.typ == Keyword.END,
-        tok,
+        tok_to_end.typ == Keyword.END,
+        tok_to_end,
         "Unclosed Function definition. Expected `END`, but found end of file instead"
     )
 
     program.append(Op(
         op=OpType.RETURN,
         operand=None,
-        tok=tok
+        tok=tok_to_end
     ))
 
     program.append(Op(
         op=OpType.NOP,
         operand=Keyword.END,
-        tok=tok
+        tok=tok_to_end
     ))
 
     end_ip = len(program)
@@ -653,7 +677,7 @@ def generate_accessor_tokens(start_tok: Token, new_struct: DataType, members: Ar
     return tokens
 
 
-def parse_struct_from_tokens(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values):
+def parse_struct_from_tokens(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap):
     assert start_tok.typ == Keyword.STRUCT
 
     compiler_error(
@@ -733,7 +757,7 @@ def parse_struct_from_tokens(start_tok: Token, tokens: List[Token], program: Pro
     tokens += generated_tokens
 
 
-def parse_if_block_from_tokens(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values):
+def parse_if_block_from_tokens(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap):
     assert start_tok.typ == Keyword.IF
     jumps: List[int] = []
 
@@ -756,6 +780,13 @@ def parse_if_block_from_tokens(start_tok: Token, tokens: List[Token], program: P
         const_values,
         [Keyword.DO],
     )
+
+    compiler_error(
+        tok_do is not None,
+        start_tok,
+        "Expected token, found end of file instead"
+    )
+    assert isinstance(tok_do, Token)
 
     compiler_error(
         tok_do.typ == Keyword.DO,
@@ -786,6 +817,12 @@ def parse_if_block_from_tokens(start_tok: Token, tokens: List[Token], program: P
             expected_keywords
         )
 
+        compiler_error(
+            tok is not None,
+            start_tok,
+            "Expected token, found end of file instead"
+        )
+        assert isinstance(tok, Token)
         assert len(
             expected_keywords) == 2, "Exhaustive handling of keywords in `IF` block"
 
@@ -831,6 +868,7 @@ def parse_if_block_from_tokens(start_tok: Token, tokens: List[Token], program: P
                 tok,
                 f"Expected Keyword `DO` or `END` after `ELSE`, but found end of file instead"
             )
+            assert isinstance(tok_next, Token)
             compiler_error(
                 tok_next.typ in [Keyword.DO, Keyword.END],
                 tok_next,
@@ -876,7 +914,7 @@ def parse_if_block_from_tokens(start_tok: Token, tokens: List[Token], program: P
             assert False, "Unreachable..."
 
 
-def parse_while_block_from_tokens(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values):
+def parse_while_block_from_tokens(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap):
     assert start_tok.typ == Keyword.WHILE
 
     do_tok_loc: int = 0
@@ -901,6 +939,12 @@ def parse_while_block_from_tokens(start_tok: Token, tokens: List[Token], program
         [Keyword.DO]
     )
 
+    compiler_error(
+        tok is not None,
+        start_tok,
+        "Expected token, found end of file instead"
+    )
+    assert isinstance(tok, Token)
     compiler_error(
         tok.typ == Keyword.DO,
         tok,
@@ -928,6 +972,13 @@ def parse_while_block_from_tokens(start_tok: Token, tokens: List[Token], program
     )
 
     compiler_error(
+        tok is not None,
+        start_tok,
+        "Expected token, found end of file instead"
+    )
+    assert isinstance(tok, Token)
+
+    compiler_error(
         tok.typ == Keyword.END,
         tok,
         f"Expected Keyword `END`. Found {tok.typ} instead"
@@ -938,8 +989,8 @@ def parse_while_block_from_tokens(start_tok: Token, tokens: List[Token], program
 
     program.append(Op(
         op=OpType.JUMP,
+        tok=tok,
         operand=start_loc,
-        tok=tok
     ))
     program[do_tok_loc].operand = len(program)
 
@@ -947,7 +998,7 @@ def parse_while_block_from_tokens(start_tok: Token, tokens: List[Token], program
 def program_from_tokens(tokens: List[Token]) -> Tuple[Program, FunctionMeta]:
     program: Program = []
     fn_meta: FunctionMeta = {}
-    const_values = {}
+    const_values: ConstMap = {}
     tokens.reverse()
 
     expected_keywords: List[Keyword] = [
@@ -963,6 +1014,7 @@ def program_from_tokens(tokens: List[Token]) -> Tuple[Program, FunctionMeta]:
             expected_keywords,
         )
 
+        assert isinstance(tok, Token)
         assert len(
             expected_keywords) == 3, "Exhaustive handling of expected keywords"
 
@@ -972,7 +1024,7 @@ def program_from_tokens(tokens: List[Token]) -> Tuple[Program, FunctionMeta]:
             parse_struct_from_tokens(
                 tok, tokens, program, fn_meta, const_values)
         elif tok.typ == Keyword.CONST:
-            parse_const_exptr(tok, tokens, program, fn_meta, const_values)
+            parse_const_expr(tok, tokens, program, fn_meta, const_values)
         elif len(tokens) == 0:
             break
         else:
@@ -984,7 +1036,7 @@ def program_from_tokens(tokens: List[Token]) -> Tuple[Program, FunctionMeta]:
 def asm_header(out):
     out.write("segment .text\n")
     # Credit to Tsoding from his first video on impl porth.
-    # TODO: Revisit this code and do my own impl.
+    # TODO: Revisit this code gand do my own impl.
     out.write("putu:\n")
     out.write("    mov     r9, -3689348814741910323\n")
     out.write("    sub     rsp, 40\n")
@@ -1178,7 +1230,8 @@ def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType]):
 
     pop_sig: List[DataType] = []
 
-    if not isinstance(sig.puts, Callable):
+    if isinstance(sig.puts, list):
+
         puts = sig.puts.copy()
 
     if n_args_expected > 0:
@@ -1203,7 +1256,8 @@ def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType]):
             pop_sig.append(T if not T.Generic else generic_map[T])
 
         if type_stack[-n_args_expected:] == pop_sig:
-            if isinstance(sig.puts, Callable):
+            if callable(sig.puts):
+                assert not isinstance(sig.puts, list)
                 puts = sig.puts(pop_sig.copy())
                 compiler_error(
                     puts != None,
@@ -1381,6 +1435,7 @@ def type_check_program(
                     sig = signatures[op.operand]
 
             elif op.op == OpType.CALL:
+                assert isinstance(op.operand, str)
                 sig = fn_meta[op.operand].signature
             else:
                 sig = signatures[op.op]
@@ -1391,7 +1446,10 @@ def type_check_program(
                 assert isinstance(op.operand, int)
                 ip = op.operand
             elif op.op == OpType.NOP and op.operand in fn_meta.keys():
-                ip = fn_meta[op.operand].end_ip
+                assert isinstance(op.operand, str)
+                tmp = fn_meta[op.operand].end_ip
+                assert isinstance(tmp, int), f"{tmp}, {type(tmp)}"
+                ip = tmp
             else:
                 ip += 1
 
@@ -1429,7 +1487,7 @@ def op_swap_to_asm(out, ip, n, m):
 
 def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta):
 
-    strings = []
+    strings: List[bytes] = []
 
     with open(f"{out_path}.asm", 'w') as out:
         asm_header(out)
@@ -1439,9 +1497,11 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta):
                 out.write(f";; --- {op.op} {op.operand} --- \n")
                 out.write(f"    push     {op.operand}\n")
             elif op.op == OpType.PUSH_BOOL:
+                assert isinstance(op.operand, bool)
                 out.write(f";; --- {op.op} {op.operand} --- \n")
                 out.write(f"    push     {int(op.operand)}\n")
             elif op.op == OpType.PUSH_STRING:
+                assert isinstance(op.operand, str)
                 out.write(f";; --- {op.op} --- \n")
                 string = op.operand + '\0'
                 encoded = string.encode('utf-8')
@@ -1626,6 +1686,7 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta):
 
                 if op.tok.typ == Keyword.FN:
                     out.write(";; --- START OF FN ---\n")
+                    assert isinstance(op.operand, str)
                     assert op.operand in fn_meta.keys()
                     after_fn_def = fn_meta[op.operand].end_ip
                     assert after_fn_def != None

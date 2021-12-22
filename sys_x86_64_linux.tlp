@@ -58,7 +58,5 @@ fn sys_stat
     -> 
     bool
 do
-
     4 syscall2 sys_ok?
-
 end

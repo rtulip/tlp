@@ -1,8 +1,8 @@
-
-fn fib int -> int do
+fn fib int -> int do 
     if dup 1 > do 
-        dup 2 - fib swap 
-            1 - fib +
+        dup
+        2 - fib swap
+        1 - fib +
     end
 end
 

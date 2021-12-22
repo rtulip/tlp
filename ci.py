@@ -63,3 +63,6 @@ for root, dir, files in os.walk("./tests"):
 run(["rm", "tmp.txt"], capture_output=True)
 print("----------------------------------")
 print(f"{tests_passed} of {tests_run} tests passed")
+print("----------------------------------")
+print("Starting MyPy")
+run(['mypy', 'tulip.py'])
