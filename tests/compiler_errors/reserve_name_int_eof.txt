@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/reserve_name_int_eof.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/reserve_name_int_eof.tlp:1:15 [ERROR]: Expected `END` keyword after reserved memory region size, but found end of file instead
+--------------------------
+exit code: 1

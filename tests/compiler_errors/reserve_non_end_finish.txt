@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/reserve_non_end_finish.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/reserve_non_end_finish.tlp:1:20 [ERROR]: Expected `END` keyword after reserved memory region size, but found MiscTokenKind.WORD:int instead.
+--------------------------
+exit code: 1

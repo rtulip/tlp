@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/reserve_name_eof.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/reserve_name_eof.tlp:1:11 [ERROR]: Expected number after reserved memory identifier, but found end of file instead
+--------------------------
+exit code: 1

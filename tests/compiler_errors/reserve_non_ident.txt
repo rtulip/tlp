@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/reserve_non_ident.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/reserve_non_ident.tlp:1:9 [ERROR]: Expected an identifier after `RESERVE` statement, but found MiscTokenKind.INT:1 instead
+--------------------------
+exit code: 1
