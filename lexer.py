@@ -40,6 +40,7 @@ class Intrinsic(Enum):
     LSL = "<<"
     LT = "<"
     GT = ">"
+    READ = "@"
     OR = "or"
     PUTU = "putu"
     DUP = 'dup'

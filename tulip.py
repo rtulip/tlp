@@ -10,6 +10,7 @@ import sys
 class OpType(Enum):
     PUSH_UINT = auto()
     PUSH_BOOL = auto()
+    PUSH_PTR = auto()
     PUSH_STRING = auto()
     INTRINSIC = auto()
     JUMP_COND = auto()
@@ -78,11 +79,12 @@ class Function:
 FunctionMeta = Dict[str, Function]
 Program = List[Op]
 ConstMap = Dict[str, Op]
-
+MemoryMap = Dict[str, Tuple[int, Token]]
 
 signatures = {
     OpType.PUSH_UINT: Signature(pops=[], puts=[INT]),
     OpType.PUSH_BOOL: Signature(pops=[], puts=[BOOL]),
+    OpType.PUSH_PTR: Signature(pops=[], puts=[PTR]),
     OpType.PUSH_STRING: Signature(pops=[], puts=[STR]),
     OpType.JUMP_COND: Signature(pops=[BOOL], puts=[]),
     OpType.JUMP: Signature(pops=[], puts=[]),
@@ -95,6 +97,7 @@ signatures = {
     Intrinsic.LSL: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.LE: Signature(pops=[INT, INT], puts=[BOOL]),
     Intrinsic.LT: Signature(pops=[INT, INT], puts=[BOOL]),
+    Intrinsic.READ: Signature(pops=[PTR], puts=[INT]),
     Intrinsic.GT: Signature(pops=[INT, INT], puts=[BOOL]),
     Intrinsic.PUTU: Signature(pops=[INT], puts=[]),
     Intrinsic.DUP: Signature(pops=[T], puts=[T, T]),
@@ -135,7 +138,13 @@ def compiler_error(predicate: bool, token: Token, msg):
         exit(1)
 
 
-def check_for_name_conflict(name: str, tok: Token, fn_meta: FunctionMeta, const_values: ConstMap):
+def check_for_name_conflict(
+    name: str,
+    tok: Token,
+    fn_meta: FunctionMeta,
+    const_values: ConstMap,
+    reserved_memory: MemoryMap
+):
     if name in fn_meta.keys():
         compiler_error(
             False,
@@ -154,7 +163,14 @@ def check_for_name_conflict(name: str, tok: Token, fn_meta: FunctionMeta, const_
         compiler_error(
             False,
             tok,
-            f"Redefinition of {name}. Previously defined here: {token_loc_str(const_values[name].tok)}"
+            f"Redefinition of `{name}`. Previously defined here: {token_loc_str(const_values[name].tok)}"
+        )
+
+    if name in reserved_memory.keys():
+        compiler_error(
+            False,
+            tok,
+            f"Redefinition of `{name}`. Previously defined here: {token_loc_str(reserved_memory[name][1])}"
         )
 
 
@@ -169,11 +185,11 @@ class FnDefState(Enum):
 
 def parse_tokens_until_keywords(
     tokens: List[Token],
-    fn_meta: FunctionMeta,
-    program: Program,
-    const_values: ConstMap,
     expected_keywords: List[Keyword],
-
+    program: Program,
+    fn_meta: FunctionMeta,
+    const_values: ConstMap,
+    reserved_memory: MemoryMap,
 ) -> Optional[Token]:
 
     if len(tokens) == 0:
@@ -207,6 +223,12 @@ def parse_tokens_until_keywords(
                     ))
                 elif tok.value in const_values.keys():
                     program.append(const_values[tok.value])
+                elif tok.value in reserved_memory.keys():
+                    program.append(Op(
+                        op=OpType.PUSH_PTR,
+                        tok=tok,
+                        operand=tok.value
+                    ))
                 else:
                     compiler_error(
                         False,
@@ -274,6 +296,7 @@ def parse_tokens_until_keywords(
                     program,
                     fn_meta,
                     const_values,
+                    reserved_memory,
                 )
             elif tok.typ == Keyword.WHILE:
                 parse_while_block_from_tokens(
@@ -282,6 +305,7 @@ def parse_tokens_until_keywords(
                     program,
                     fn_meta,
                     const_values,
+                    reserved_memory,
                 )
             elif tok.typ == Keyword.INCLUDE:
                 parse_include_statement(
@@ -295,9 +319,9 @@ def parse_tokens_until_keywords(
                 parse_reserve_statement(
                     tok,
                     tokens,
-                    program,
                     fn_meta,
                     const_values,
+                    reserved_memory,
                 )
             else:
 
@@ -380,13 +404,72 @@ def eval_const_ops(program: Program, tok: Token):
 
 
 def parse_reserve_statement(
-    start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap
+    start_tok: Token,
+    tokens: List[Token],
+    fn_meta: FunctionMeta,
+    const_values: ConstMap,
+    reserved_memory: MemoryMap,
 ):
 
-    assert False, "..."
+    assert start_tok.typ == Keyword.RESERVE
+    compiler_error(
+        len(tokens) > 0,
+        start_tok,
+        f"Expected identifier after `RESERVE` statement, but found end of file instead"
+    )
+
+    memory_name = tokens.pop()
+    compiler_error(
+        memory_name.typ == MiscTokenKind.WORD,
+        memory_name,
+        f"Expected an identifier after `RESERVE` statement, but found {memory_name.typ}:{memory_name.value} instead"
+    )
+
+    check_for_name_conflict(
+        memory_name.value,
+        memory_name,
+        fn_meta,
+        const_values,
+        reserved_memory,
+    )
+
+    compiler_error(
+        len(tokens) > 0,
+        memory_name,
+        f"Expected number after reserved memory identifier, but found end of file instead"
+    )
+
+    value = tokens.pop()
+
+    compiler_error(
+        value.typ == MiscTokenKind.INT,
+        value,
+        f"Expected `INT` after reserved memory identifier, but found {value.typ}:{value.value} instead."
+    )
+
+    compiler_error(
+        len(tokens) > 0,
+        value,
+        f"Expected `END` keyword after reserved memory region size, but found end of file instead"
+    )
+
+    end = tokens.pop()
+    compiler_error(
+        end.typ == Keyword.END,
+        end,
+        f"Expected `END` keyword after reserved memory region size, but found {end.typ}:{end.value} instead."
+    )
+
+    reserved_memory[memory_name.value] = (value.value, start_tok)
 
 
-def parse_const_expr(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap):
+def parse_const_expr(
+    start_tok: Token,
+    tokens: List[Token],
+    fn_meta: FunctionMeta,
+    const_values: ConstMap,
+    reserved_memory: MemoryMap
+):
 
     assert start_tok.typ == Keyword.CONST
 
@@ -408,7 +491,8 @@ def parse_const_expr(start_tok: Token, tokens: List[Token], program: Program, fn
         const_ident.value,
         const_ident,
         fn_meta,
-        const_values
+        const_values,
+        reserved_memory,
     )
 
     compiler_error(
@@ -418,8 +502,14 @@ def parse_const_expr(start_tok: Token, tokens: List[Token], program: Program, fn
     )
 
     const_ops: Program = []
-    parse_tokens_until_keywords(tokens, fn_meta, const_ops, const_values, [
-                                Keyword.END])
+    parse_tokens_until_keywords(
+        tokens,
+        [Keyword.END],
+        const_ops,
+        fn_meta,
+        const_values,
+        reserved_memory,
+    )
 
     const_values[const_ident.value] = eval_const_ops(const_ops, start_tok)
 
@@ -448,7 +538,14 @@ def parse_include_statement(start_tok: Token, tokens: List[Token], program: Prog
     tokens += included_tokens
 
 
-def parse_fn_from_tokens(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap):
+def parse_fn_from_tokens(
+    start_tok: Token,
+    tokens: List[Token],
+    program: Program,
+    fn_meta: FunctionMeta,
+    const_values: ConstMap,
+    reserved_memory: MemoryMap
+):
     signature = Signature(pops=[], puts=[])
     assert isinstance(signature.puts, list)
     start_loc = len(program)
@@ -480,7 +577,8 @@ def parse_fn_from_tokens(start_tok: Token, tokens: List[Token], program: Program
         fn_name,
         name_tok,
         fn_meta,
-        const_values
+        const_values,
+        reserved_memory,
     )
 
     program[start_loc].operand = fn_name
@@ -558,8 +656,14 @@ def parse_fn_from_tokens(start_tok: Token, tokens: List[Token], program: Program
         end_ip=None
     )
 
-    tok_to_end = parse_tokens_until_keywords(tokens, fn_meta, program, const_values, [
-        Keyword.END])
+    tok_to_end = parse_tokens_until_keywords(
+        tokens,
+        [Keyword.END],
+        program,
+        fn_meta,
+        const_values,
+        reserved_memory,
+    )
 
     compiler_error(
         isinstance(tok_to_end, Token),
@@ -677,7 +781,13 @@ def generate_accessor_tokens(start_tok: Token, new_struct: DataType, members: Ar
     return tokens
 
 
-def parse_struct_from_tokens(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap):
+def parse_struct_from_tokens(
+    start_tok: Token,
+    tokens: List[Token],
+    fn_meta: FunctionMeta,
+    const_values: ConstMap,
+    reserved_memory: MemoryMap,
+):
     assert start_tok.typ == Keyword.STRUCT
 
     compiler_error(
@@ -697,7 +807,8 @@ def parse_struct_from_tokens(start_tok: Token, tokens: List[Token], program: Pro
         name_tok.value,
         name_tok,
         fn_meta,
-        const_values
+        const_values,
+        reserved_memory,
     )
 
     compiler_error(
@@ -757,7 +868,14 @@ def parse_struct_from_tokens(start_tok: Token, tokens: List[Token], program: Pro
     tokens += generated_tokens
 
 
-def parse_if_block_from_tokens(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap):
+def parse_if_block_from_tokens(
+    start_tok: Token,
+    tokens: List[Token],
+    program: Program,
+    fn_meta: FunctionMeta,
+    const_values: ConstMap,
+    reserved_memory: MemoryMap,
+):
     assert start_tok.typ == Keyword.IF
     jumps: List[int] = []
 
@@ -775,10 +893,11 @@ def parse_if_block_from_tokens(start_tok: Token, tokens: List[Token], program: P
 
     tok_do = parse_tokens_until_keywords(
         tokens,
-        fn_meta,
-        program,
-        const_values,
         [Keyword.DO],
+        program,
+        fn_meta,
+        const_values,
+        reserved_memory,
     )
 
     compiler_error(
@@ -811,10 +930,11 @@ def parse_if_block_from_tokens(start_tok: Token, tokens: List[Token], program: P
     while len(tokens) > 0:
         tok = parse_tokens_until_keywords(
             tokens,
-            fn_meta,
+            expected_keywords,
             program,
+            fn_meta,
             const_values,
-            expected_keywords
+            reserved_memory,
         )
 
         compiler_error(
@@ -857,10 +977,11 @@ def parse_if_block_from_tokens(start_tok: Token, tokens: List[Token], program: P
             # Look for DO or END
             tok_next = parse_tokens_until_keywords(
                 tokens,
-                fn_meta,
+                [Keyword.DO, Keyword.END],
                 program,
+                fn_meta,
                 const_values,
-                [Keyword.DO, Keyword.END]
+                reserved_memory,
             )
 
             compiler_error(
@@ -914,7 +1035,14 @@ def parse_if_block_from_tokens(start_tok: Token, tokens: List[Token], program: P
             assert False, "Unreachable..."
 
 
-def parse_while_block_from_tokens(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap):
+def parse_while_block_from_tokens(
+    start_tok: Token,
+    tokens: List[Token],
+    program: Program,
+    fn_meta: FunctionMeta,
+    const_values: ConstMap,
+    reserved_memory: MemoryMap,
+):
     assert start_tok.typ == Keyword.WHILE
 
     do_tok_loc: int = 0
@@ -933,10 +1061,11 @@ def parse_while_block_from_tokens(start_tok: Token, tokens: List[Token], program
 
     tok = parse_tokens_until_keywords(
         tokens,
-        fn_meta,
+        [Keyword.DO],
         program,
+        fn_meta,
         const_values,
-        [Keyword.DO]
+        reserved_memory,
     )
 
     compiler_error(
@@ -965,10 +1094,11 @@ def parse_while_block_from_tokens(start_tok: Token, tokens: List[Token], program
 
     tok = parse_tokens_until_keywords(
         tokens,
-        fn_meta,
+        [Keyword.END],
         program,
+        fn_meta,
         const_values,
-        [Keyword.END]
+        reserved_memory,
     )
 
     compiler_error(
@@ -995,10 +1125,11 @@ def parse_while_block_from_tokens(start_tok: Token, tokens: List[Token], program
     program[do_tok_loc].operand = len(program)
 
 
-def program_from_tokens(tokens: List[Token]) -> Tuple[Program, FunctionMeta]:
+def program_from_tokens(tokens: List[Token]) -> Tuple[Program, FunctionMeta, MemoryMap]:
     program: Program = []
     fn_meta: FunctionMeta = {}
     const_values: ConstMap = {}
+    reserved_memory: MemoryMap = {}
     tokens.reverse()
 
     expected_keywords: List[Keyword] = [
@@ -1008,10 +1139,11 @@ def program_from_tokens(tokens: List[Token]) -> Tuple[Program, FunctionMeta]:
 
         tok = parse_tokens_until_keywords(
             tokens,
-            fn_meta,
-            program,
-            const_values,
             expected_keywords,
+            program,
+            fn_meta,
+            const_values,
+            reserved_memory
         )
 
         assert isinstance(tok, Token)
@@ -1019,18 +1151,36 @@ def program_from_tokens(tokens: List[Token]) -> Tuple[Program, FunctionMeta]:
             expected_keywords) == 3, "Exhaustive handling of expected keywords"
 
         if tok.typ == Keyword.FN:
-            parse_fn_from_tokens(tok, tokens, program, fn_meta, const_values)
+            parse_fn_from_tokens(
+                tok,
+                tokens,
+                program,
+                fn_meta,
+                const_values,
+                reserved_memory
+            )
         elif tok.typ == Keyword.STRUCT:
             parse_struct_from_tokens(
-                tok, tokens, program, fn_meta, const_values)
+                tok,
+                tokens,
+                fn_meta,
+                const_values,
+                reserved_memory
+            )
         elif tok.typ == Keyword.CONST:
-            parse_const_expr(tok, tokens, program, fn_meta, const_values)
+            parse_const_expr(
+                tok,
+                tokens,
+                fn_meta,
+                const_values,
+                reserved_memory
+            )
         elif len(tokens) == 0:
             break
         else:
             assert False, f"Unreachable... {tok}:{tok.value} "
 
-    return (program, fn_meta)
+    return (program, fn_meta, reserved_memory)
 
 
 def asm_header(out):
@@ -1076,7 +1226,7 @@ def asm_header(out):
     out.write("    mov [ret_stack_rsp], rax\n")
 
 
-def asm_exit(out, strings):
+def asm_exit(out, strings, reserved_memory: MemoryMap):
     out.write("exit:\n")
     out.write("    mov rax, 60\n")
     out.write("    mov rdi, 0\n")
@@ -1086,9 +1236,11 @@ def asm_exit(out, strings):
     for i, data in enumerate(strings):
         out.write(f"    string_{i}: db {','.join(map(hex, list(data)))}\n")
     out.write("segment .bss\n")
-    out.write("ret_stack_rsp: resq 1\n")
-    out.write(f"ret_stack: resb {8192}\n")
-    out.write("ret_stack_end:\n")
+    out.write(f"    ret_stack_rsp: resq 1\n")
+    out.write(f"    ret_stack: resb {8192}\n")
+    out.write(f"    ret_stack_end:\n")
+    for k, v in reserved_memory.items():
+        out.write(f"    mem_{k}: resb {v[0]}")
 
 
 def type_check_cond_jump(ip: int, program: Program, fn_meta: FunctionMeta, current_stack: List[DataType]) -> Tuple[int, List[List[DataType]]]:
@@ -1472,20 +1624,20 @@ def op_swap_to_asm(out, ip, n, m):
     out.write(f"    add     rcx, {8 * (n + m - 2)}\n")
     out.write(f"    mov     rsi, 0\n")  # How many
     out.write(f"rotate_{ip}:\n")
-    out.write(f"   mov     rax, [rbx]\n")
-    out.write(f"   xchg    rax, [rcx]\n")
-    out.write(f"   mov     [rbx], rax\n")
-    out.write(f"   sub     rbx, 8\n")
-    out.write(f"   sub     rcx, 8\n")
-    out.write(f"   add     rsi, 1\n")
-    out.write(f"   cmp     rsi, {n + m - 1}\n")
-    out.write(f"   jl     rotate_{ip}\n")
-    out.write(f"   sub     rdi, 1\n")
-    out.write(f"   cmp     rdi, 0\n")
-    out.write(f"   jg     loop_{ip}\n")
+    out.write(f"    mov     rax, [rbx]\n")
+    out.write(f"    xchg    rax, [rcx]\n")
+    out.write(f"    mov     [rbx], rax\n")
+    out.write(f"    sub     rbx, 8\n")
+    out.write(f"    sub     rcx, 8\n")
+    out.write(f"    add     rsi, 1\n")
+    out.write(f"    cmp     rsi, {n + m - 1}\n")
+    out.write(f"    jl      rotate_{ip}\n")
+    out.write(f"    sub     rdi, 1\n")
+    out.write(f"    cmp     rdi, 0\n")
+    out.write(f"    jg      loop_{ip}\n")
 
 
-def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta):
+def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, reserved_memory: MemoryMap):
 
     strings: List[bytes] = []
 
@@ -1495,11 +1647,16 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta):
             out.write(f"op_{ip}: ")
             if op.op == OpType.PUSH_UINT:
                 out.write(f";; --- {op.op} {op.operand} --- \n")
-                out.write(f"    push     {op.operand}\n")
+                out.write(f"    push    {op.operand}\n")
             elif op.op == OpType.PUSH_BOOL:
                 assert isinstance(op.operand, bool)
                 out.write(f";; --- {op.op} {op.operand} --- \n")
                 out.write(f"    push     {int(op.operand)}\n")
+            elif op.op == OpType.PUSH_PTR:
+                assert isinstance(op.operand, str)
+                assert op.operand in reserved_memory.keys()
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    push     mem_{op.operand}\n")
             elif op.op == OpType.PUSH_STRING:
                 assert isinstance(op.operand, str)
                 out.write(f";; --- {op.op} --- \n")
@@ -1513,32 +1670,32 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta):
 
                 if op.operand == Intrinsic.ADD:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write("    pop     rax\n")
-                    out.write("    pop     rbx\n")
-                    out.write("    add     rax, rbx\n")
-                    out.write("    push    rax\n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    pop     rbx\n")
+                    out.write(f"    add     rax, rbx\n")
+                    out.write(f"    push    rax\n")
                 elif op.operand == Intrinsic.SUB:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write("    pop     rax\n")
-                    out.write("    pop     rbx\n")
-                    out.write("    sub     rbx, rax\n")
-                    out.write("    push    rbx\n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    pop     rbx\n")
+                    out.write(f"    sub     rbx, rax\n")
+                    out.write(f"    push    rbx\n")
                 elif op.operand == Intrinsic.LSL:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write("    pop     rcx\n")
-                    out.write("    pop     rbx\n")
-                    out.write("    shl     rbx, cl\n")
-                    out.write("    push    rbx\n")
+                    out.write(f"    pop     rcx\n")
+                    out.write(f"    pop     rbx\n")
+                    out.write(f"    shl     rbx, cl\n")
+                    out.write(f"    push    rbx\n")
                 elif op.operand == Intrinsic.OR:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write("    pop     rax\n")
-                    out.write("    pop     rbx\n")
-                    out.write("    or      rbx, rax\n")
-                    out.write("    push    rbx\n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    pop     rbx\n")
+                    out.write(f"    or      rbx, rax\n")
+                    out.write(f"    push    rbx\n")
                 elif op.operand == Intrinsic.PUTU:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write("    pop     rdi\n")
-                    out.write("    call    putu\n")
+                    out.write(f"    pop     rdi\n")
+                    out.write(f"    call    putu\n")
                 elif op.operand == Intrinsic.DUP:
                     out.write(
                         f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
@@ -1561,6 +1718,11 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta):
                     op_swap_to_asm(out, ip, n, m)
                 elif op.operand == Intrinsic.SPLIT:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
+                elif op.operand == Intrinsic.READ:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    mov     rax, [rax]\n")
+                    out.write(f"    push    rax\n")
                 elif op.operand == Intrinsic.LE:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write(f"    mov     rcx, 0\n")
@@ -1712,7 +1874,7 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta):
                 print(f"Operation {op.op} is not supported yet")
                 exit(1)
         out.write(f"op_{len(program)}:\n")
-        asm_exit(out, strings)
+        asm_exit(out, strings, reserved_memory)
     call(["nasm", "-felf64", f"{out_path}.asm"])
     call(["ld", "-o", f"{out_path}", f"{out_path}.o"])
 
@@ -1735,7 +1897,7 @@ if __name__ == "__main__":
     #     print(f"{i} -- {tok.typ}: {tok.value}")
     # print("-------------------------------------------")
 
-    program, fn_meta = program_from_tokens(tokens)
+    program, fn_meta, reserved_memory = program_from_tokens(tokens)
     # print("-------------------------------------------")
     # for ip, op in enumerate(program):
     #     print(f"{ip} -- {op.op}: {op.operand} TokenType: {op.tok.typ}")
@@ -1752,4 +1914,4 @@ if __name__ == "__main__":
         [Note]: Expected an empty stack found {type_stack} instead"""
 
         )
-        compile_program("output", program, fn_meta)
+        compile_program("output", program, fn_meta, reserved_memory)

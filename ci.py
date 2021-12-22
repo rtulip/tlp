@@ -1,6 +1,6 @@
 import os
 from subprocess import run
-import subprocess
+from argparse import ArgumentParser
 
 tests_run, tests_passed = 0, 0
 for root, dir, files in os.walk("./tests"):
