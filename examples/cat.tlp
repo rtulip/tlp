@@ -1,0 +1,41 @@
+use "std.tlp"
+
+const STATBUF_SIZE_OFFSET 48 end
+const FILE_BUFFER_SIZE 1000000 end
+
+reserve statbuf 144 end
+reserve file_buffer FILE_BUFFER_SIZE end
+
+fn statbuf.size ptr -> int do
+    as int STATBUF_SIZE_OFFSET + as ptr @
+end
+
+fn cat Str do
+    dup 
+    statbuf swap stat
+
+    if statbuf statbuf.size FILE_BUFFER_SIZE > do 
+        "File too big to read.\n" eputs
+        1 exit
+    end
+
+    O_RDONLY swap 0 swap fopen dup
+    statbuf statbuf.size swap
+    file_buffer swap
+    
+    if sys_read do
+        drop
+        fclose
+    else
+        "Failed to read from file\n" eputs
+        drop
+        fclose 
+        1 exit
+    end
+    
+    statbuf statbuf.size file_buffer as Str puts
+
+end 
+
+
+"examples/cat.tlp" cat

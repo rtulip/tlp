@@ -338,7 +338,7 @@ def parse_tokens_until_keywords(
     return tok
 
 
-def eval_const_ops(program: Program, tok: Token):
+def eval_const_ops(program: Program, tok: Token) -> Optional[Op]:
     stack = []
     program.reverse()
 
@@ -402,6 +402,8 @@ def eval_const_ops(program: Program, tok: Token):
             f"Unsupported CONST evaluation type: {value}"
         )
 
+    return None
+
 
 def parse_reserve_statement(
     start_tok: Token,
@@ -439,28 +441,42 @@ def parse_reserve_statement(
         f"Expected number after reserved memory identifier, but found end of file instead"
     )
 
-    value = tokens.pop()
-
-    compiler_error(
-        value.typ == MiscTokenKind.INT,
-        value,
-        f"Expected `INT` after reserved memory identifier, but found {value.typ}:{value.value} instead."
+    const_expr: Program = []
+    tok = parse_tokens_until_keywords(
+        tokens,
+        [Keyword.END],
+        const_expr,
+        fn_meta,
+        const_values,
+        reserved_memory,
     )
 
+    if not isinstance(tok, Token):
+        compiler_error(
+            False,
+            start_tok,
+            "Expected `END` to close reserve block. Found end of file instead"
+        )
+
+    assert isinstance(tok, Token)
+
     compiler_error(
-        len(tokens) > 0,
-        value,
-        f"Expected `END` keyword after reserved memory region size, but found end of file instead"
+        tok.typ == Keyword.END,
+        tok,
+        f"Expected `END` to close reserve block. found {tok.typ}:{tok.value} instead"
     )
 
-    end = tokens.pop()
-    compiler_error(
-        end.typ == Keyword.END,
-        end,
-        f"Expected `END` keyword after reserved memory region size, but found {end.typ}:{end.value} instead."
-    )
+    value = eval_const_ops(const_expr, start_tok)
+    assert value is not None
 
-    reserved_memory[memory_name.value] = (value.value, start_tok)
+    compiler_error(
+        value.op == OpType.PUSH_UINT,
+        start_tok,
+        "Constant Expression in Reserve block must evaluate to an int.",
+    )
+    assert isinstance(value.operand, int)
+
+    reserved_memory[memory_name.value] = (value.operand, start_tok)
 
 
 def parse_const_expr(
@@ -510,8 +526,9 @@ def parse_const_expr(
         const_values,
         reserved_memory,
     )
-
-    const_values[const_ident.value] = eval_const_ops(const_ops, start_tok)
+    value = eval_const_ops(const_ops, start_tok)
+    assert value is not None
+    const_values[const_ident.value] = value
 
 
 def parse_include_statement(start_tok: Token, tokens: List[Token], program: Program, fn_meta: FunctionMeta, const_values: ConstMap):
@@ -1240,7 +1257,7 @@ def asm_exit(out, strings, reserved_memory: MemoryMap):
     out.write(f"    ret_stack: resb {8192}\n")
     out.write(f"    ret_stack_end:\n")
     for k, v in reserved_memory.items():
-        out.write(f"    mem_{k}: resb {v[0]}")
+        out.write(f"    mem_{k}: resb {v[0]}\n")
 
 
 def type_check_cond_jump(ip: int, program: Program, fn_meta: FunctionMeta, current_stack: List[DataType]) -> Tuple[int, List[List[DataType]]]:
@@ -1912,6 +1929,7 @@ if __name__ == "__main__":
             program[ip].tok,
             f"""Unhandled data on the datastack.
         [Note]: Expected an empty stack found {type_stack} instead"""
-
         )
         compile_program("output", program, fn_meta, reserved_memory)
+    else:
+        print("Empty Program...")

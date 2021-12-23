@@ -2,10 +2,28 @@ import os
 from subprocess import run
 from argparse import ArgumentParser
 
+
+def cleanup(name='output'):
+    try:
+        os.remove(name)
+    except FileNotFoundError:
+        pass
+
+    try:
+        os.remove(f'{name}.asm')
+    except FileNotFoundError:
+        pass
+    try:
+        os.remove(f'{name}.o')
+    except FileNotFoundError:
+        pass
+
+
 tests_run, tests_passed = 0, 0
 for root, dir, files in os.walk("./tests"):
     for file in files:
         if file.endswith(".tlp"):
+            cleanup()
             file_path = root+"/"+file
             txt_file = file[:-3] + "txt"
             txt_file_path = root+"/"+txt_file

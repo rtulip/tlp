@@ -69,8 +69,8 @@ fn puts Str do
     if sys_write swap drop do
         drop    // Str
     else
-        "Failed to write to stdout:\n\t[Note]: " eputs 
-        eputs
+        "Failed to write to stdout:\n" eputs
+        "Tried to write: `" eputs eputs "`\n" eputs
         1 exit
     end
 end
