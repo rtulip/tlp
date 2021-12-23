@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/reserve_name_int_eof.tlp'
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/reserve_name_int_eof.tlp:1:15 [ERROR]: Expected `END` keyword after reserved memory region size, but found end of file instead
+./tests/compiler_errors/reserve_name_int_eof.tlp:1:15 [ERROR]: Expected `END` to close reserve block. found MiscTokenKind.INT:100 instead
 --------------------------
 exit code: 1

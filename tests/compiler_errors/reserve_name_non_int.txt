@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/reserve_name_non_int.tlp'
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/reserve_name_non_int.tlp:1:15 [ERROR]: Expected `INT` after reserved memory identifier, but found MiscTokenKind.WORD:int instead.
+./tests/compiler_errors/reserve_name_non_int.tlp:1:15 [ERROR]: Unrecognized WORD int.
 --------------------------
 exit code: 1
