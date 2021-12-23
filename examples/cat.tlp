@@ -7,7 +7,7 @@ reserve statbuf 144 end
 reserve file_buffer FILE_BUFFER_SIZE end
 
 fn statbuf.size ptr -> int do
-    as int STATBUF_SIZE_OFFSET + as ptr @
+    as int STATBUF_SIZE_OFFSET + as ptr @64
 end
 
 fn cat Str do

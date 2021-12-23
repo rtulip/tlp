@@ -1,0 +1,123 @@
+use "std.tlp"
+
+const STATBUF_SIZE_OFFSET 48 end
+const FILE_BUFFER_SIZE 1000000 end
+
+reserve statbuf 144 end
+reserve file_buffer FILE_BUFFER_SIZE end
+
+fn statbuf.size ptr -> int do
+    as int STATBUF_SIZE_OFFSET + as ptr @64
+end
+
+fn load_file_to_str Str -> Str do
+    dup 
+    statbuf swap stat
+
+    if statbuf statbuf.size FILE_BUFFER_SIZE > do 
+        "File too big to read.\n" eputs
+        1 exit
+    end
+
+    O_RDONLY swap 0 swap fopen dup
+    statbuf statbuf.size swap
+    file_buffer swap
+    
+    if sys_read do
+        drop
+        fclose
+    else
+        "Failed to read from file\n" eputs
+        drop
+        fclose 
+        1 exit
+    end
+    
+    statbuf statbuf.size file_buffer as Str
+
+end 
+
+fn char_at Str int -> int do
+
+    // TODO: Check bounds
+    swap Str.Data as int swap + as ptr @8 
+
+end 
+
+fn str_shift_right_by Str int -> Str do
+
+    // TODO: Check bounds
+    2 group
+
+    dup split swap
+    Str.Data as int swap + as ptr
+    swap 
+
+    split swap
+    Str.Size swap -
+    swap
+
+    as Str
+
+end 
+
+fn str_len_diff Str Str -> int do 
+    // len(S1) - len(S2)
+    2 group dup
+    group.0 Str.Size swap
+    group.1 Str.Size - 
+end 
+
+fn chop_word_left Str -> Str Str do
+    dup 
+    while 
+        if dup Str.Size 0 > do 
+            if dup 0 char_at 32 == do
+                1 str_shift_right_by 
+                false
+            else dup 0 char_at 10 == do
+                1 str_shift_right_by 
+                false
+            else
+                true
+            end 
+
+        else
+            false
+        end 
+    do 
+        1 str_shift_right_by 
+    end
+
+    // [S1 S2] S1_New 
+    2 group dup 
+    dup split str_len_diff  swap 
+    group.0 Str.Data as Str
+    swap group.1 swap 
+end 
+
+fn str_trim_trailing_whitespace Str -> Str do 
+    while 
+        if dup Str.Size 0 > do
+            if dup dup Str.Size 1 - char_at 10 == do
+                true
+            else dup dup Str.Size 1 - char_at 32 == do
+                true
+            else 
+                false
+            end 
+        else
+            false
+        end
+    do
+        dup Str.Size 1 - swap Str.Data as Str 
+    end
+end 
+
+"examples/parse.tlp" load_file_to_str
+while dup Str.Size 0 > do 
+    chop_word_left str_trim_trailing_whitespace
+
+    "|" puts puts "|\n" puts
+
+end drop

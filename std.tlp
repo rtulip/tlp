@@ -58,12 +58,14 @@ end
 // Prints a string to stderr.
 // No error handling is done here.
 fn eputs Str do
+    
     split 2 as FileDesc sys_write drop drop
 end     
 
 // Prints a String to stdout.
 // Error messages put to stderr.
 fn puts Str do
+    // dup Str.Size putu
     dup split 1 as FileDesc
     
     if sys_write swap drop do

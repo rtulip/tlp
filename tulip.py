@@ -1512,6 +1512,7 @@ def type_check_program(
                 fn_meta,
                 type_stack
             )
+            ip += 1
         elif op.op == OpType.NOP and op.tok.typ == Keyword.WHILE:
             ip, type_stack = type_check_while_block(
                 ip,
