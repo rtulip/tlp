@@ -118,6 +118,10 @@ end
 while dup Str.Size 0 > do 
     chop_word_left str_trim_trailing_whitespace
 
-    "|" puts puts "|\n" puts
+    if dup Str.Size 0 > do 
+        "|" puts puts "|\n" puts
+    else
+        drop
+    end
 
 end drop

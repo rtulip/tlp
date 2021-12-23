@@ -1673,12 +1673,12 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
             elif op.op == OpType.PUSH_BOOL:
                 assert isinstance(op.operand, bool)
                 out.write(f";; --- {op.op} {op.operand} --- \n")
-                out.write(f"    push     {int(op.operand)}\n")
+                out.write(f"    push    {int(op.operand)}\n")
             elif op.op == OpType.PUSH_PTR:
                 assert isinstance(op.operand, str)
                 assert op.operand in reserved_memory.keys()
                 out.write(f";; --- {op.op} {op.operand} --- \n")
-                out.write(f"    push     mem_{op.operand}\n")
+                out.write(f"    push    mem_{op.operand}\n")
             elif op.op == OpType.PUSH_STRING:
                 assert isinstance(op.operand, str)
                 out.write(f";; --- {op.op} --- \n")
@@ -1721,8 +1721,8 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                 elif op.operand == Intrinsic.DUP:
                     out.write(
                         f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
-                    out.write(f"    mov     rbx, rsp\n ")
-                    out.write(f"    mov     rcx, rsp\n ")
+                    out.write(f"    mov     rbx, rsp\n")
+                    out.write(f"    mov     rcx, rsp\n")
                     out.write(f"    add     rcx, {(op.tok.value - 1) * 8} \n")
                     out.write(f"loop_{ip}:\n")
                     out.write(f"    mov     rax, [rcx]\n")
@@ -1882,7 +1882,6 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                 if ip + 1 != op.operand:
                     out.write(f"    jmp     op_{op.operand}\n")
             elif op.op == OpType.NOP:
-
                 if op.tok.typ == Keyword.FN:
                     out.write(";; --- START OF FN ---\n")
                     assert isinstance(op.operand, str)
@@ -1897,9 +1896,9 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                     out.write("\n")
             elif op.op == OpType.RETURN:
                 out.write(f";; --- {op.op} {op.operand} --- \n")
-                out.write(f"mov rax, rsp\n")
-                out.write(f"mov rsp, [ret_stack_rsp]\n")
-                out.write("    ret\n")
+                out.write(f"    mov     rax, rsp\n")
+                out.write(f"    mov     rsp, [ret_stack_rsp]\n")
+                out.write(f"    ret\n")
             elif op.op == OpType.CALL:
                 out.write(f";; --- {op.op} {op.operand} --- \n")
                 out.write(f"    mov     rax, rsp\n")

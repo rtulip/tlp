@@ -1,0 +1,30 @@
+use "std.tlp"
+
+
+
+fn char_at Str int -> int do
+
+    // TODO: Check bounds
+    swap Str.Data as int swap + as ptr @8 
+
+end 
+
+" "
+if dup Str.Size 0 > do 
+    dup 0 char_at
+
+    dup putu
+    if dup 32 ==  do 
+        "Space\n" puts
+        false
+    else dup 10 == do
+        "New Line\n" puts
+        false
+    else 
+        true
+    end
+else
+    false
+end
+
+drop drop drop
