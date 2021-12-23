@@ -95,9 +95,11 @@ signatures = {
     Intrinsic.SUB: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.OR: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.LSL: Signature(pops=[INT, INT], puts=[INT]),
+    Intrinsic.EQ: Signature(pops=[INT, INT], puts=[BOOL]),
     Intrinsic.LE: Signature(pops=[INT, INT], puts=[BOOL]),
     Intrinsic.LT: Signature(pops=[INT, INT], puts=[BOOL]),
-    Intrinsic.READ: Signature(pops=[PTR], puts=[INT]),
+    Intrinsic.READ64: Signature(pops=[PTR], puts=[INT]),
+    Intrinsic.READ8: Signature(pops=[PTR], puts=[INT]),
     Intrinsic.GT: Signature(pops=[INT, INT], puts=[BOOL]),
     Intrinsic.PUTU: Signature(pops=[INT], puts=[]),
     Intrinsic.DUP: Signature(pops=[T], puts=[T, T]),
@@ -1261,11 +1263,13 @@ def asm_exit(out, strings, reserved_memory: MemoryMap):
 
 
 def type_check_cond_jump(ip: int, program: Program, fn_meta: FunctionMeta, current_stack: List[DataType]) -> Tuple[int, List[List[DataType]]]:
-
     assert program[
         ip].op == OpType.JUMP_COND, f"Bug in type checking pointed to the wrong place. {program[ip]}"
     evaluate_signature(
-        program[ip], signatures[OpType.JUMP_COND], current_stack)
+        program[ip],
+        signatures[OpType.JUMP_COND],
+        current_stack
+    )
 
     end_ip, stack_if_true = type_check_program(
         program,
@@ -1735,11 +1739,26 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                     op_swap_to_asm(out, ip, n, m)
                 elif op.operand == Intrinsic.SPLIT:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
-                elif op.operand == Intrinsic.READ:
+                elif op.operand == Intrinsic.READ64:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write(f"    pop     rax\n")
                     out.write(f"    mov     rax, [rax]\n")
                     out.write(f"    push    rax\n")
+                elif op.operand == Intrinsic.READ8:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    xor     rbx, rbx\n")
+                    out.write(f"    mov     bl, [rax]\n")
+                    out.write(f"    push    rbx\n")
+                elif op.operand == Intrinsic.EQ:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    mov     rcx, 0\n")
+                    out.write(f"    mov     rdx, 1\n")
+                    out.write(f"    pop     rbx\n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    cmp     rax, rbx\n")
+                    out.write(f"    cmove   rcx, rdx\n")
+                    out.write(f"    push    rcx\n")
                 elif op.operand == Intrinsic.LE:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write(f"    mov     rcx, 0\n")

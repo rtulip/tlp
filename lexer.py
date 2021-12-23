@@ -36,11 +36,13 @@ These are operations which may consume and or add to the stack.
 class Intrinsic(Enum):
     ADD = "\+"
     SUB = "-"
+    EQ = "=="
     LE = "<="
     LSL = "<<"
     LT = "<"
     GT = ">"
-    READ = "@"
+    READ64 = "@64"
+    READ8 = "@8"
     OR = "or"
     PUTU = "putu"
     DUP = 'dup'
