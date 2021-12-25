@@ -93,6 +93,7 @@ signatures = {
     OpType.NOP: Signature(pops=[], puts=[]),
     Intrinsic.ADD: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.SUB: Signature(pops=[INT, INT], puts=[INT]),
+    Intrinsic.AND: Signature(pops=[BOOL, BOOL], puts=[BOOL]),
     Intrinsic.OR: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.LSL: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.EQ: Signature(pops=[INT, INT], puts=[BOOL]),
@@ -1707,6 +1708,12 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                     out.write(f"    pop     rcx\n")
                     out.write(f"    pop     rbx\n")
                     out.write(f"    shl     rbx, cl\n")
+                    out.write(f"    push    rbx\n")
+                elif op.operand == Intrinsic.AND:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    pop     rbx\n")
+                    out.write(f"    and     rbx, rax\n")
                     out.write(f"    push    rbx\n")
                 elif op.operand == Intrinsic.OR:
                     out.write(f";; --- {op.op} {op.operand} --- \n")

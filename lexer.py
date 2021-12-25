@@ -44,6 +44,7 @@ class Intrinsic(Enum):
     READ64 = "@64"
     READ8 = "@8"
     OR = "or"
+    AND = "and"
     PUTU = "putu"
     DUP = 'dup'
     DROP = 'drop'
