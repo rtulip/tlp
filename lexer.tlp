@@ -1,0 +1,26 @@
+use "std.tlp"
+
+struct Loc
+    int // 
+    int 
+    Str
+end
+
+fn Loc.column Loc -> int do
+    Loc.0
+end
+
+fn Loc.line Loc -> int do
+    Loc.1
+end
+
+fn Loc.file Loc -> Str do
+    Loc.2
+end
+
+fn print_loc Loc do
+    split
+    puts ":" puts putd ":" puts putd
+end
+
+1 17 "lexer.tlp" as Loc print_loc "\n" puts

@@ -102,6 +102,7 @@ signatures = {
     Intrinsic.LE: Signature(pops=[INT, INT], puts=[BOOL]),
     Intrinsic.LT: Signature(pops=[INT, INT], puts=[BOOL]),
     Intrinsic.READ64: Signature(pops=[PTR], puts=[INT]),
+    Intrinsic.WRITE8: Signature(pops=[A, PTR], puts=[]),
     Intrinsic.READ8: Signature(pops=[PTR], puts=[INT]),
     Intrinsic.GT: Signature(pops=[INT, INT], puts=[BOOL]),
     Intrinsic.PUTU: Signature(pops=[INT], puts=[]),
@@ -1774,6 +1775,11 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                     out.write(f"    xor     rbx, rbx\n")
                     out.write(f"    mov     bl, [rax]\n")
                     out.write(f"    push    rbx\n")
+                elif op.operand == Intrinsic.WRITE8:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    pop rax\n")
+                    out.write(f"    pop rbx\n")
+                    out.write(f"    mov [rax], bl\n")
                 elif op.operand == Intrinsic.EQ:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write(f"    mov     rcx, 0\n")

@@ -8,6 +8,9 @@ fn Str.Data Str -> ptr do
     split swap drop
 end
 
+const PUTD_BUFFER_SIZE 20 end
+reserve putd_buffer PUTD_BUFFER_SIZE end
+
 // File permissions
 const O_RDONLY    0       end 
 const O_WRONLY    1       end
@@ -50,6 +53,9 @@ const S_ISVTX 1 9  << end
 const S_ISUID 1 10 << end
 const S_ISGID 1 11 << end
 
+fn stdout -> FileDesc do
+    1 as FileDesc
+end
 
 fn exit int do
     sys_exit
@@ -106,7 +112,44 @@ do
 
     group.0
 
-end 
+end
+
+fn fputd FileDesc int -> FileDesc do
+
+    if dup 0 == do
+        drop "0" puts 
+    else
+    
+        putd_buffer as int PUTD_BUFFER_SIZE 1 - + as ptr swap
+
+        // ptr int 
+        while dup 0 > do
+
+            2 group dup split
+
+            // ptr int
+            10 % 48 + swap !8
+            
+            split
+            10 / swap
+            as int 1 - as ptr swap
+
+        end drop
+
+        as int 1 +
+
+        dup putd_buffer as int PUTD_BUFFER_SIZE + swap -
+        swap as ptr
+        as Str fputs
+
+    end
+end
+
+fn putd int do
+
+    stdout swap fputd drop
+
+end
 
 fn fopen
     int int Str // Mode Flags Filename

@@ -202,13 +202,13 @@ fn str_to_uint Str -> int do
 
 end 
 
-fn two_dup Str Str -> Str Str Str Str do 
+fn two_dup a b -> a b a b do 
     2 group dup 
     group.0 swap dup 
     group.1 swap dup
     group.0 swap
     group.1
-end 
+end
 
 fn str_eq Str Str -> bool do
     

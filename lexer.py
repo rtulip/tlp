@@ -45,6 +45,7 @@ class Intrinsic(Enum):
     GT = ">"
     READ64 = "@64"
     READ8 = "@8"
+    WRITE8 = "!8"
     OR = "or"
     AND = "and"
     PUTU = "putu"
