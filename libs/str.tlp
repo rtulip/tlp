@@ -1,0 +1,121 @@
+fn Str.Size Str -> int do 
+    split drop
+end 
+
+fn Str.Data Str -> ptr do 
+    split swap drop
+end
+
+fn Str.At Str int -> int do
+    // TODO: Check bounds
+    swap Str.Data as int swap + as ptr @8 
+end 
+
+fn Str.ShiftRightBy Str int -> Str do 
+
+    // TODO: Check bounds
+    2 group
+
+    dup split swap
+    Str.Data as int swap + as ptr
+    swap 
+
+    split swap
+    Str.Size swap -
+    swap
+
+    as Str
+
+end
+
+fn Str.Equals Str Str -> bool do
+    
+    // 2dup
+    2 group dup 
+    group.0 swap dup 
+    group.1 swap dup
+    group.0 swap
+    group.1
+
+    if Str.Size swap Str.Size == do
+        true swap
+
+        // Str1 Bool Str2
+        while dup Str.Size 0 > do
+
+            3 group dup 
+            group.0 1 Str.ShiftRightBy swap
+            dup dup split
+            0 Str.At swap
+            drop swap
+            0 Str.At == swap
+            group.1 and swap 
+            group.2 1 Str.ShiftRightBy
+
+        end
+
+        drop swap drop
+    else
+        drop drop false
+    end
+
+end
+
+fn Str.StartsWith Str Str -> bool do    
+    2 group dup split
+    Str.Size swap
+    Str.Size swap
+
+    if < do
+        drop false
+    else
+        // S_mod [S Q] 
+        dup
+        split Str.Size swap Str.Data as Str
+        swap group.1 Str.Equals
+    end
+end
+
+fn not bool -> bool do
+    if do
+        false
+    else 
+        true
+    end
+end
+
+fn Str.SplitLine Str -> Str Str bool do
+
+    dup
+    while   
+        dup dup
+        Str.Size 0 > swap
+        "\n" Str.StartsWith not 
+        and 
+    do
+        1 Str.ShiftRightBy
+    end
+
+    if dup Str.Size 0 > do
+        // Successful Split
+        
+        1 Str.ShiftRightBy
+
+        // swap dup Str.Size putu
+        
+        2 group dup dup split
+        Str.Data as int swap
+        Str.Data as int -
+        1 - 
+
+        swap group.0 Str.Data as Str
+        swap group.1 swap
+        true
+
+    else
+        // No newline present
+        false
+
+    end
+    
+end

@@ -1,9 +1,19 @@
 use "std.tlp"
 
+const invalid 0 1 - end
+
+const STATBUF_CAP 144 end
+const STATBUF_SIZE_OFFSET 48 end
+const FILE_BUFFER_CAP 1000000 end
+
+reserve statbuf STATBUF_CAP end
+reserve file_buffer FILE_BUFFER_CAP end
+
+
 struct Loc
-    int // 
-    int 
-    Str
+    int // column
+    int // line
+    Str // file
 end
 
 fn Loc.column Loc -> int do
@@ -18,9 +28,67 @@ fn Loc.file Loc -> Str do
     Loc.2
 end
 
-fn print_loc Loc do
+fn Loc.Print Loc do
     split
     puts ":" puts putd ":" puts putd
 end
 
-1 17 "lexer.tlp" as Loc print_loc "\n" puts
+struct Token
+    int // type
+        // value
+    Loc // loc
+end
+
+const Token.Type.Keyword   0 end
+const Token.Type.Intrinsic 1 end
+const Token.Type.Misc      2 end
+
+struct OptionalToken
+    Token
+    bool
+end
+
+// fn OptionalToken.None -> OptionalToken do 
+//     invalid 0 0 "" as Loc as Token false as OptionalToken
+// end
+fn statbuf.size ptr -> int do
+    as int STATBUF_SIZE_OFFSET + as ptr @64
+end
+
+fn load_file_to_str Str -> Str do
+    dup 
+    statbuf swap stat
+
+    if statbuf statbuf.size FILE_BUFFER_CAP > do 
+        "File too big to read.\n" eputs
+        1 exit
+    end
+
+    O_RDONLY swap 0 swap fopen dup
+    statbuf statbuf.size swap
+    file_buffer swap
+    
+    if sys_read do
+        drop
+        fclose
+    else
+        "Failed to read from file\n" eputs
+        drop
+        fclose 
+        1 exit
+    end
+    
+    statbuf statbuf.size file_buffer as Str
+
+end 
+
+"examples/parse.tlp" load_file_to_str
+while 
+    if Str.SplitLine do
+        "|" puts puts "|\n" puts
+        true
+    else
+        drop false
+    end
+do end 
+drop

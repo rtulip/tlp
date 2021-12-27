@@ -1,12 +1,5 @@
 use "sys_x86_64_linux.tlp"
-
-fn Str.Size Str -> int do 
-    split drop
-end 
-
-fn Str.Data Str -> ptr do 
-    split swap drop
-end
+use "libs/str.tlp"
 
 const PUTD_BUFFER_SIZE 20 end
 reserve putd_buffer PUTD_BUFFER_SIZE end
