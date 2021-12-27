@@ -93,6 +93,8 @@ signatures = {
     OpType.NOP: Signature(pops=[], puts=[]),
     Intrinsic.ADD: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.SUB: Signature(pops=[INT, INT], puts=[INT]),
+    Intrinsic.DIV: Signature(pops=[INT, INT], puts=[INT]),
+    Intrinsic.MOD: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.AND: Signature(pops=[BOOL, BOOL], puts=[BOOL]),
     Intrinsic.OR: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.LSL: Signature(pops=[INT, INT], puts=[INT]),
@@ -1703,6 +1705,20 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                     out.write(f"    pop     rbx\n")
                     out.write(f"    sub     rbx, rax\n")
                     out.write(f"    push    rbx\n")
+                elif op.operand == Intrinsic.DIV:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    mov     rdx, 0\n")
+                    out.write(f"    pop     rcx\n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    div     rcx\n")
+                    out.write(f"    push    rax\n")
+                elif op.operand == Intrinsic.MOD:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    mov     rdx, 0\n")
+                    out.write(f"    pop     rcx\n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    div     rcx\n")
+                    out.write(f"    push    rdx\n")
                 elif op.operand == Intrinsic.LSL:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write(f"    pop     rcx\n")

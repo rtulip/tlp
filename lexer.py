@@ -36,6 +36,8 @@ These are operations which may consume and or add to the stack.
 class Intrinsic(Enum):
     ADD = "\+"
     SUB = "-"
+    DIV = "/"
+    MOD = "%"
     EQ = "=="
     LE = "<="
     LSL = "<<"
