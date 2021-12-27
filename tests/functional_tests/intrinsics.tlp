@@ -29,7 +29,7 @@ use "std.tlp"
 while dup Str.Size 0 > do 
     dup Str.Data @8 putu
     dup Str.Size 1 - swap 
-    Str.Data as int 1 + as ptr as Str
+    Str.Data cast(int) 1 + cast(ptr) cast(Str)
 end drop
 
 // Create a 64 bit "number" in memory to read.

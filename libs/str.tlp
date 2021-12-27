@@ -1,3 +1,7 @@
+const ASCII_DOUBLE_QUOTE 34 end
+const ASCII_0 48 end
+const ASCII_9 ASCII_0 9 + end
+
 fn Str.Size Str -> int do 
     split drop
 end 
@@ -8,7 +12,7 @@ end
 
 fn Str.At Str int -> int do
     // TODO: Check bounds
-    swap Str.Data as int swap + as ptr @8 
+    swap Str.Data cast(int) swap + cast(ptr) @8 
 end 
 
 fn Str.ShiftRightBy Str int -> Str do 
@@ -17,14 +21,29 @@ fn Str.ShiftRightBy Str int -> Str do
     2 group
 
     dup split swap
-    Str.Data as int swap + as ptr
+    Str.Data cast(int) swap + cast(ptr)
     swap 
 
     split swap
     Str.Size swap -
     swap
 
-    as Str
+    cast(Str)
+
+end
+
+fn Str.ShiftLeftBy Str int -> Str do
+    // TODO: Check Bounds
+
+    // (S-n) [S n]
+    2 group 
+    dup split swap
+    Str.Size swap -
+    swap
+
+    group.0 Str.Data
+    cast(Str)
+
 
 end
 
@@ -61,6 +80,7 @@ fn Str.Equals Str Str -> bool do
 
 end
 
+
 fn Str.StartsWith Str Str -> bool do    
     2 group dup split
     Str.Size swap
@@ -71,17 +91,25 @@ fn Str.StartsWith Str Str -> bool do
     else
         // S_mod [S Q] 
         dup
-        split Str.Size swap Str.Data as Str
+        split Str.Size swap Str.Data cast(Str)
         swap group.1 Str.Equals
     end
 end
 
-fn not bool -> bool do
-    if do
-        false
-    else 
-        true
+fn Str.EndsWith Str Str -> bool do
+
+    2 group dup split
+    Str.Size swap
+    Str.Size swap
+    if < do
+        drop false
+    else
+        dup dup
+        split Str.Size swap Str.Size swap -
+        swap group.0 swap Str.ShiftRightBy
+        swap group.1 Str.Equals
     end
+
 end
 
 fn Str.SplitLine Str -> Str Str bool do
@@ -90,7 +118,11 @@ fn Str.SplitLine Str -> Str Str bool do
     while   
         dup dup
         Str.Size 0 > swap
-        "\n" Str.StartsWith not 
+        if "\n" Str.StartsWith do
+            false
+        else
+            true
+        end
         and 
     do
         1 Str.ShiftRightBy
@@ -104,18 +136,96 @@ fn Str.SplitLine Str -> Str Str bool do
         // swap dup Str.Size putu
         
         2 group dup dup split
-        Str.Data as int swap
-        Str.Data as int -
+        Str.Data cast(int) swap
+        Str.Data cast(int) -
         1 - 
 
-        swap group.0 Str.Data as Str
+        swap group.0 Str.Data cast(Str)
         swap group.1 swap
         true
 
     else
         // No newline present
+        swap
         false
 
     end
     
 end
+
+fn Str.StripLeft Str -> Str do
+    while dup 0 Str.At 32 == do
+        1 Str.ShiftRightBy
+    end 
+end
+
+fn Str.Split Str -> Str Str bool do
+
+    dup
+    while   
+        dup dup
+        Str.Size 0 > swap
+        if " " Str.StartsWith do
+            false
+        else
+            true
+        end
+        and 
+    do
+        1 Str.ShiftRightBy
+    end
+
+    if dup Str.Size 0 > do
+        // Successful Split
+        
+        1 Str.ShiftRightBy
+
+        // swap dup Str.Size putu
+        
+        2 group dup dup split
+        Str.Data cast(int) swap
+        Str.Data cast(int) -
+        1 - 
+
+        swap group.0 Str.Data cast(Str)
+        swap group.1 swap
+        true
+
+    else
+        // No Spaces present
+        swap false
+
+    end
+
+end
+
+fn Str.Numeric Str -> bool do
+    
+    if dup Str.Size 0 > do
+
+        true swap
+        while
+            if dup Str.Size 0 > do
+                if dup 0 Str.At ASCII_0 < do
+                    swap drop false swap
+                    false
+                else dup 0 Str.At ASCII_9 > do
+                    swap drop false swap
+                    false
+                else
+                    true
+                end
+            else
+                false
+            end 
+        do 
+            1 Str.ShiftRightBy
+        end 
+        drop
+    else
+        drop false
+    end
+
+
+end
+ 

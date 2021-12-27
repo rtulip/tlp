@@ -5,7 +5,7 @@ args: ['python3', 'tulip.py', './tests/type_check_errors/while_loop_change_stack
 ./tests/type_check_errors/while_loop_change_stack.tlp:1:5 [ERROR]: 
     While loops cannot change the stack outside of the loop
     [Note]: Stack at start of loop: []
-    [Note]: Stack at end of loop  : [DataType(Ident='int', Generic=False, Struct=False, Size=1)]
+    [Note]: Stack at end of loop  : [int]
         
 --------------------------
 exit code: 1

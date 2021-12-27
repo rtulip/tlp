@@ -110,9 +110,7 @@ signatures = {
     Intrinsic.DROP: Signature(pops=[T], puts=[]),
     Intrinsic.SWAP: Signature(pops=[A, B], puts=[B, A]),
     Intrinsic.SPLIT: Signature(pops=[T], puts=lambda List_T: StructMembers[List_T[0]] if List_T[0].Struct else None),
-    Intrinsic.CAST_INT: Signature(pops=[T], puts=lambda pops: [INT] if pops[0] in [INT, BOOL, PTR] else None),
-    Intrinsic.CAST_PTR: Signature(pops=[INT], puts=[PTR]),
-    # Intrinsic.CAST_STRUCT creates signatures dynamically based on the struct
+    # Intrinsic.CAST creates signatures dynamically based on the struct
     # Intrinsic.INNER_TUPLE creates a signature dynamically based on the tuple on the top of the stack.
     # Intrinsic.CAST_TUPLE  creates signatures dynamically based on the number of elements asked to group
 
@@ -1321,6 +1319,23 @@ def type_check_cond_jump(ip: int, program: Program, fn_meta: FunctionMeta, curre
         assert False, f"Well this was unexpected... {end_ip} vs {false_path_ip} {program[false_path_ip].op}:{program[false_path_ip].operand}"
 
 
+def pretty_print_arg_list(arg_list: List[DataType]) -> str:
+    s = "["
+    for t in arg_list[:-1]:
+        s += f"{t.Ident} "
+    if len(arg_list) > 0:
+        s += f"{arg_list[-1].Ident}"
+    s += "]"
+    return s
+
+
+def pretty_print_stack_options(possible_stacks: List[List[DataType]]) -> str:
+    s = "\n"
+    for i, stack in enumerate(possible_stacks):
+        s += f"        Branch {i+1}: {pretty_print_arg_list(stack)}\n"
+    return s
+
+
 def type_check_if_block(ip: int, program: Program, fn_meta: FunctionMeta, current_stack: List[DataType]) -> Tuple[int, List[DataType]]:
     possile_stacks: List[List[DataType]] = []
 
@@ -1350,7 +1365,7 @@ def type_check_if_block(ip: int, program: Program, fn_meta: FunctionMeta, curren
         program[ip].tok,
         f"""
     Each branch of an IF Block must produce a similare stack.
-    Possible outputs: {possible_stacks}
+    Possible outputs: {pretty_print_stack_options(possible_stacks)}
         """
     )
     return (end_ip, possible_stacks[0])
@@ -1388,8 +1403,8 @@ def type_check_while_block(ip: int, program: Program, fn_meta: FunctionMeta, cur
         program[ip].tok,
         f"""
     While loops cannot change the stack outside of the loop
-    [Note]: Stack at start of loop: {stack_before}
-    [Note]: Stack at end of loop  : {final_stack}
+    [Note]: Stack at start of loop: {pretty_print_arg_list(stack_before)}
+    [Note]: Stack at end of loop  : {pretty_print_arg_list(final_stack)}
         """
     )
 
@@ -1404,8 +1419,8 @@ def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType]):
         op.tok,
         f"""
         Operation {op.op}:{op.operand} Requires {n_args_expected} arguments. {len(type_stack)} found.
-        [Note]: Expected {sig.pops}
-        [Note]: Found    {type_stack}
+        [Note]: Expected {pretty_print_arg_list(sig.pops)}
+        [Note]: Found    {pretty_print_arg_list(type_stack)}
         """
     )
 
@@ -1466,8 +1481,8 @@ def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType]):
                 op.tok,
                 f"""
     Didn't find a matching signature for {op.op}:{op.operand}.
-    Expected: {sig.pops}
-    Found   : {type_stack[-n_args_expected:]}
+    Expected: {pretty_print_arg_list(sig.pops)}
+    Found   : {pretty_print_arg_list(type_stack[-n_args_expected:])}
                 """
             )
 
@@ -1498,13 +1513,15 @@ def type_check_program(
                 ]
             )
 
+            puts = fn.signature.puts
+            assert isinstance(puts, list)
             compiler_error(
                 out_stack == fn.signature.puts,
                 fn.tok,
                 f"""
     Function `{fn.ident}` output doesn't match signature.
-    [Note]: Expected Output Stack: {fn.signature.puts}
-    [Note]: Actual Output Stack  : {out_stack}
+    [Note]: Expected Output Stack: {pretty_print_arg_list(puts)}
+    [Note]: Actual Output Stack  : {pretty_print_arg_list(out_stack)}
                 """
             )
 
@@ -1535,19 +1552,37 @@ def type_check_program(
             if op.op == OpType.INTRINSIC:
                 assert isinstance(op.operand, Intrinsic)
 
-                if op.tok.typ == Intrinsic.CAST_STRUCT:
+                if op.tok.typ == Intrinsic.CAST:
                     compiler_error(
                         op.tok.value in TypeDict.keys(),
                         op.tok,
                         f"Unrecognized Data Type `{op.tok.value}`"
                     )
-                    struct_t = TypeDict[op.tok.value]
-                    assert struct_t.Struct and struct_t in StructMembers.keys()
-
-                    sig = Signature(
-                        pops=StructMembers[struct_t].copy(),
-                        puts=[struct_t]
-                    )
+                    t = TypeDict[op.tok.value]
+                    if t.Struct:
+                        assert t in StructMembers.keys(), f"{t}"
+                        sig = Signature(
+                            pops=StructMembers[t].copy(),
+                            puts=[t]
+                        )
+                    else:
+                        if t.Ident == INT.Ident:
+                            sig = Signature(
+                                pops=[T],
+                                puts=lambda stk: [INT] if stk[0] in [
+                                    INT, BOOL, PTR] else None
+                            )
+                        elif t.Ident == PTR.Ident:
+                            sig = Signature(
+                                pops=[INT],
+                                puts=[PTR]
+                            )
+                        else:
+                            compiler_error(
+                                False,
+                                op.tok,
+                                f"Cannot cast to built in type {t.Ident}"
+                            )
                 elif op.tok.typ == Intrinsic.CAST_TUPLE:
                     global TUPLE_IDENT_COUNT
                     n = op.tok.value
@@ -1822,11 +1857,7 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                     out.write(f"    cmp     rax, rbx\n")
                     out.write(f"    cmovg   rcx, rdx\n")
                     out.write(f"    push    rcx\n")
-                elif op.operand == Intrinsic.CAST_INT:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                elif op.operand == Intrinsic.CAST_PTR:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                elif op.operand == Intrinsic.CAST_STRUCT:
+                elif op.operand == Intrinsic.CAST:
                     out.write(
                         f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
                 elif op.operand == Intrinsic.CAST_TUPLE:
@@ -1982,7 +2013,7 @@ if __name__ == "__main__":
             len(type_stack) == 0,
             program[ip].tok,
             f"""Unhandled data on the datastack.
-        [Note]: Expected an empty stack found {type_stack} instead"""
+    [Note]: Expected an empty stack found: {pretty_print_arg_list(type_stack)}"""
         )
         compile_program("output", program, fn_meta, reserved_memory)
     else:

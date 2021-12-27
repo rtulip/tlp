@@ -1,14 +1,6 @@
 use "std.tlp"
 
-const invalid 0 1 - end
-
-const STATBUF_CAP 144 end
-const STATBUF_SIZE_OFFSET 48 end
-const FILE_BUFFER_CAP 1000000 end
-
-reserve statbuf STATBUF_CAP end
-reserve file_buffer FILE_BUFFER_CAP end
-
+const INVALID 0 1 - end
 
 struct Loc
     int // column
@@ -28,67 +20,524 @@ fn Loc.file Loc -> Str do
     Loc.2
 end
 
+fn Loc.AddToColumn Loc int -> Loc do
+    2 group
+    // new_col [Loc int] 
+    dup
+    split swap
+    Loc.column +
+    swap split drop
+    dup Loc.line swap
+    Loc.file
+    cast(Loc)
+end
+
+fn Loc.IncrementLine Loc -> Loc do
+
+    1 swap 
+    dup Loc.line 1 + swap
+    Loc.file cast(Loc)
+
+end
+
 fn Loc.Print Loc do
     split
     puts ":" puts putd ":" puts putd
 end
 
+const TokenValue.IntKind  0                       end
+const TokenValue.StrKind  TokenValue.IntKind  1 + end
+const TokenValue.BoolKind TokenValue.StrKind  1 + end
+const TokenValue.WordKind TokenValue.BoolKind 1 + end
+struct TokenValue
+    int // int value
+    Str // Str Value
+    int // kind
+end
+
+fn TokenValue.Kind TokenValue -> int do
+    TokenValue.2
+end
+
+fn TokenValue.FromInt int -> TokenValue do
+    "" TokenValue.IntKind cast(TokenValue)
+end
+
+fn TokenValue.FromStr Str -> TokenValue do
+    INVALID swap TokenValue.StrKind cast(TokenValue)
+end
+
+fn TokenValue.FromBool bool -> TokenValue do
+    if do 1 else 0 end "" TokenValue.BoolKind cast(TokenValue)
+end
+
+fn TokenValue.Int TokenValue -> int do
+    split
+    if TokenValue.IntKind == do
+        drop
+    else
+        "Tried to get int from non-int TokenValue." eputs
+        1 exit
+        drop
+    end
+end
+
+fn TokenValue.Str TokenValue -> Str do
+    split
+    if TokenValue.StrKind == do
+        swap drop
+    else
+        "Tried to get Str from non-Str TokenValue." eputs
+        1 exit
+        swap drop
+    end
+end
+
+fn TokenValue.Bool TokenValue -> bool do
+    split
+    if TokenValue.BoolKind == do
+        drop if 1 == do
+            true
+        else
+            false
+        end
+    else
+        "Tried to get bool from non-bool TokenValue." eputs
+        1 exit
+        drop drop false
+    end
+end
+
+
 struct Token
-    int // type
-        // value
-    Loc // loc
+    Loc         // loc
+    TokenValue  // value
+    int         // type
 end
 
-const Token.Type.Keyword   0 end
-const Token.Type.Intrinsic 1 end
-const Token.Type.Misc      2 end
-
-struct OptionalToken
-    Token
-    bool
+fn Token.Loc Token -> Loc do
+    Token.0
 end
 
-// fn OptionalToken.None -> OptionalToken do 
-//     invalid 0 0 "" as Loc as Token false as OptionalToken
-// end
-fn statbuf.size ptr -> int do
-    as int STATBUF_SIZE_OFFSET + as ptr @64
+fn Token.Value Token -> TokenValue do
+    Token.1
 end
 
-fn load_file_to_str Str -> Str do
-    dup 
-    statbuf swap stat
+fn Token.Type Token -> int do
+    Token.2
+end
 
-    if statbuf statbuf.size FILE_BUFFER_CAP > do 
-        "File too big to read.\n" eputs
-        1 exit
-    end
+const Token.Type.Keyword    0 end
+const Keyword.IF            0 end
+const Keyword.DO            1 end
+const Keyword.ELSE          2 end
+const Keyword.END           3 end
+const Keyword.WHILE         4 end
+const Keyword.FN            5 end
+const Keyword.STRUCT        6 end
+const Keyword.ARROW         7 end
+const Keyword.INCLUDE       8 end
+const Keyword.CONST         9 end
+const Keyword.RESERVE      10 end
 
-    O_RDONLY swap 0 swap fopen dup
-    statbuf statbuf.size swap
-    file_buffer swap
-    
-    if sys_read do
-        drop
-        fclose
+fn Keyword.Print int do
+
+    if   dup Keyword.IF == do
+        "IF" puts
+    else dup Keyword.DO == do
+        "DO" puts
+    else dup Keyword.ELSE == do
+        "ELSE" puts
+    else dup Keyword.END == do
+        "END" puts
+    else dup Keyword.WHILE == do
+        "WHILE" puts
+    else dup Keyword.FN == do
+        "FN" puts
+    else dup Keyword.STRUCT == do
+        "STRUCT" puts
+    else dup Keyword.ARROW == do
+        "ARROW" puts
+    else dup Keyword.INCLUDE == do
+        "INCLUDE" puts
+    else dup Keyword.CONST == do
+        "CONST" puts
+    else dup Keyword.RESERVE == do
+        "RESERVE" puts
     else
-        "Failed to read from file\n" eputs
-        drop
-        fclose 
-        1 exit
+        "INVALID" puts
     end
-    
-    statbuf statbuf.size file_buffer as Str
+    drop
+end
 
-end 
+const Token.Type.Intrinsic  1                           end
+const Intrinsic.ADD         0                           end
+const Intrinsic.SUB         Intrinsic.ADD 1 +           end
+const Intrinsic.DIV         Intrinsic.SUB 1 +           end
+const Intrinsic.MOD         Intrinsic.DIV 1 +           end
+const Intrinsic.EQ          Intrinsic.MOD 1 +           end
+const Intrinsic.LE          Intrinsic.EQ 1 +            end
+const Intrinsic.LSL         Intrinsic.LE 1 +            end
+const Intrinsic.LT          Intrinsic.LSL 1 +           end
+const Intrinsic.GT          Intrinsic.LT 1 +            end
+const Intrinsic.READ64      Intrinsic.GT 1 +            end
+const Intrinsic.READ8       Intrinsic.READ64 1 +        end
+const Intrinsic.WRITE8      Intrinsic.READ8 1 +         end
+const Intrinsic.OR          Intrinsic.WRITE8 1 +        end
+const Intrinsic.AND         Intrinsic.OR 1 +            end
+const Intrinsic.PUTU        Intrinsic.AND 1 +           end
+const Intrinsic.DUP         Intrinsic.PUTU 1 +          end
+const Intrinsic.DROP        Intrinsic.DUP 1 +           end
+const Intrinsic.SWAP        Intrinsic.DROP 1 +          end
+const Intrinsic.SPLIT       Intrinsic.SWAP 1 +          end
+const Intrinsic.CAST        Intrinsic.SPLIT 1 +         end
+const Intrinsic.INNER_TUPLE Intrinsic.CAST 1 +          end
+const Intrinsic.CAST_TUPLE  Intrinsic.INNER_TUPLE 1 +   end
+const Intrinsic.SYSCALL0    Intrinsic.CAST_TUPLE 1 +    end
+const Intrinsic.SYSCALL1    Intrinsic.SYSCALL0 1 +      end
+const Intrinsic.SYSCALL2    Intrinsic.SYSCALL1 1 +      end
+const Intrinsic.SYSCALL3    Intrinsic.SYSCALL2 1 +      end
+const Intrinsic.SYSCALL4    Intrinsic.SYSCALL3 1 +      end
+const Intrinsic.SYSCALL5    Intrinsic.SYSCALL4 1 +      end
+const Intrinsic.SYSCALL6    Intrinsic.SYSCALL5 1 +      end
 
-"examples/parse.tlp" load_file_to_str
-while 
-    if Str.SplitLine do
-        "|" puts puts "|\n" puts
+fn Intrinsic.Print int do
+
+    if dup Intrinsic.ADD == do
+    else dup Intrinsic.SUB == do
+        "SUB" puts
+    else dup Intrinsic.DIV == do
+        "DIV" puts
+    else dup Intrinsic.MOD == do
+        "MOD" puts
+    else dup Intrinsic.EQ == do
+        "EQ" puts
+    else dup Intrinsic.LE == do
+        "LE" puts
+    else dup Intrinsic.LSL == do
+        "LSL" puts
+    else dup Intrinsic.LT == do
+        "LT" puts
+    else dup Intrinsic.GT == do
+        "GT" puts
+    else dup Intrinsic.READ64 == do
+        "READ64" puts
+    else dup Intrinsic.READ8 == do
+        "READ8" puts
+    else dup Intrinsic.WRITE8 == do
+        "WRITE8" puts
+    else dup Intrinsic.OR == do
+        "OR" puts
+    else dup Intrinsic.AND == do
+        "AND" puts
+    else dup Intrinsic.PUTU == do
+        "PUTU" puts
+    else dup Intrinsic.DUP == do
+        "DUP" puts
+    else dup Intrinsic.DROP == do
+        "DROP" puts
+    else dup Intrinsic.SWAP == do
+        "SWAP" puts
+    else dup Intrinsic.SPLIT == do
+        "SPLIT" puts
+    else dup Intrinsic.CAST == do
+        "CAST" puts
+    else dup Intrinsic.INNER_TUPLE == do
+        "INNER_TUPLE" puts
+    else dup Intrinsic.CAST_TUPLE == do
+        "CAST_TUPLE" puts
+    else dup Intrinsic.SYSCALL0 == do
+        "SYSCALL0" puts
+    else dup Intrinsic.SYSCALL1 == do
+        "SYSCALL1" puts
+    else dup Intrinsic.SYSCALL2 == do
+        "SYSCALL2" puts
+    else dup Intrinsic.SYSCALL3 == do
+        "SYSCALL3" puts
+    else dup Intrinsic.SYSCALL4 == do
+        "SYSCALL4" puts
+    else dup Intrinsic.SYSCALL5 == do
+        "SYSCALL5" puts
+    else dup Intrinsic.SYSCALL6 == do
+        "SYSCALL6" puts
+    else
+        "INVALID" puts
+    end
+
+    drop
+end
+
+const Token.Type.INT      2 end
+const Token.Type.STR      3 end
+const Token.Type.BOOL     4 end
+const Token.Type.WORD     5 end
+
+
+fn Token.Print Token do
+
+    dup Token.Loc Loc.Print ": " puts
+    split
+    if dup Token.Type.Keyword == do
+        drop "Keyword: " puts TokenValue.Int Keyword.Print "\n" puts
+    else dup Token.Type.Intrinsic == do
+        drop "Intrinsic: " puts TokenValue.Int Intrinsic.Print "\n" puts
+    else dup Token.Type.INT == do 
+        drop "Int: " puts TokenValue.Int putu
+    else dup Token.Type.BOOL == do
+        drop "bool: " puts 
+        if TokenValue.Bool do
+            "true\n"
+        else
+            "false\n"
+        end
+        puts
+    else dup Token.Type.STR == do
+        drop "String: " puts TokenValue.Str puts "\n" puts
+    else dup Token.Type.WORD == do
+        drop "Word: " puts TokenValue.Str puts "\n" puts
+    else
+        "Unrecognized Token\n" puts
+        drop drop 
+    end
+
+    drop
+end
+
+fn IsKeyword Str -> int bool do
+
+    if   dup "if" Str.Equals do
+        drop Keyword.IF
+    else dup "do" Str.Equals do
+        drop Keyword.DO 
+    else dup "else" Str.Equals do
+        drop Keyword.ELSE 
+    else dup "end" Str.Equals do
+        drop Keyword.END 
+    else dup "while" Str.Equals do
+        drop Keyword.WHILE 
+    else dup "fn" Str.Equals do
+        drop Keyword.FN 
+    else dup "struct" Str.Equals do
+        drop Keyword.STRUCT 
+    else dup "->" Str.Equals do
+        drop Keyword.ARROW 
+    else dup "use" Str.Equals do
+        drop Keyword.INCLUDE 
+    else dup "const" Str.Equals do
+        drop Keyword.CONST 
+    else dup "reserve" Str.Equals do
+        drop Keyword.RESERVE 
+    else
+        drop INVALID
+    end
+
+    if dup INVALID == do
+        false
+    else
         true
-    else
-        drop false
     end
-do end 
-drop
+
+end
+
+fn IsIntrinsic Str -> int bool do
+
+    if dup "+" Str.Equals do
+        drop Intrinsic.ADD 
+    else dup "-" Str.Equals do
+        drop Intrinsic.SUB
+    else dup "/" Str.Equals do
+        drop Intrinsic.DIV
+    else dup "%" Str.Equals do
+        drop Intrinsic.MOD
+    else dup "==" Str.Equals do
+        drop Intrinsic.EQ
+    else dup "<=" Str.Equals do
+        drop Intrinsic.LE
+    else dup "<<" Str.Equals do
+        drop Intrinsic.LSL
+    else dup "<" Str.Equals do
+        drop Intrinsic.LT
+    else dup ">" Str.Equals do
+        drop Intrinsic.GT
+    else dup "@64" Str.Equals do
+        drop Intrinsic.READ64
+    else dup "@8" Str.Equals do
+        drop Intrinsic.READ8
+    else dup "!8" Str.Equals do
+        drop Intrinsic.WRITE8
+    else dup "or" Str.Equals do
+        drop Intrinsic.OR
+    else dup "and" Str.Equals do
+        drop Intrinsic.AND
+    else dup "putu" Str.Equals do
+        drop Intrinsic.PUTU
+    else dup "dup" Str.Equals do
+        drop Intrinsic.DUP
+    else dup "drop" Str.Equals do
+        drop Intrinsic.DROP
+    else dup "swap" Str.Equals do
+        drop Intrinsic.SWAP
+    else dup "split" Str.Equals do
+        drop Intrinsic.SPLIT
+    else 
+        dup dup 
+        "cast(" Str.StartsWith swap
+        ")" Str.EndsWith and
+    do
+        drop Intrinsic.CAST
+    else dup "group." Str.StartsWith do
+        drop Intrinsic.INNER_TUPLE
+    else dup "group" Str.Equals do
+        drop Intrinsic.CAST_TUPLE
+    else dup "syscall0" Str.Equals do
+        drop Intrinsic.SYSCALL0
+    else dup "syscall1" Str.Equals do
+        drop Intrinsic.SYSCALL1
+    else dup "syscall2" Str.Equals do
+        drop Intrinsic.SYSCALL2
+    else dup "syscall3" Str.Equals do
+        drop Intrinsic.SYSCALL3
+    else dup "syscall4" Str.Equals do
+        drop Intrinsic.SYSCALL4
+    else dup "syscall5" Str.Equals do
+        drop Intrinsic.SYSCALL5
+    else dup "syscall6" Str.Equals do
+        drop Intrinsic.SYSCALL6  
+    else
+        drop INVALID
+    end
+
+    if dup INVALID == do
+        false
+    else
+        true
+    end
+
+end
+
+fn IntoToken Loc Str -> Token do
+    
+    // Str int
+    if dup IsKeyword do
+        swap drop TokenValue.FromInt Token.Type.Keyword cast(Token)
+    else drop dup IsIntrinsic do
+        swap drop TokenValue.FromInt Token.Type.Intrinsic cast(Token)
+    else drop dup Str.Numeric do
+        Str.ToInt TokenValue.FromInt Token.Type.INT cast(Token)
+    else dup "true" Str.Equals do
+        drop true TokenValue.FromBool Token.Type.BOOL cast(Token) 
+    else dup "false" Str.Equals do
+        drop false TokenValue.FromBool Token.Type.BOOL cast(Token) 
+    else 
+        // Str
+        dup dup
+        0 Str.At ASCII_DOUBLE_QUOTE == swap
+        dup Str.Size 1 - Str.At ASCII_DOUBLE_QUOTE == and
+    do
+        TokenValue.FromStr Token.Type.STR cast(Token)
+    else 
+        TokenValue.FromStr Token.Type.WORD cast(Token)
+    end
+
+end
+
+fn update_loc 
+    Loc Str Str Str     // LOC F L W 
+    -> 
+    Loc Str Str Loc Str // LOC_Updated F L LOC W
+ do
+
+    // Loc F [L W] D
+    2 group dup split
+    Str.Data cast(int) swap
+    Str.Data cast(int) swap -
+
+
+    // LOC_UP F [Loc F D L W] 
+    swap split
+    5 group
+
+    dup dup 
+    group.0 swap group.2
+    Loc.AddToColumn swap    // Loc Up
+    dup group.1 swap        // F
+    dup group.3 swap        // L
+    dup group.0 swap        // LOC
+    group.4                 // W
+
+end
+
+fn not_comment Str -> bool do
+    if dup Str.Size 1 > do
+        
+        dup 1 Str.ShiftRightBy "/" Str.StartsWith swap
+        "/" Str.StartsWith and not
+    else
+        drop true
+    end
+end
+
+fn tokenize_file Str do
+    
+    dup 
+    1 swap 1 swap cast(Loc) swap
+    load_file_to_str
+    while 
+        
+        if Str.SplitLine do 
+            // Loc File_rem Line
+            while 
+                if Str.Split do
+                    update_loc
+                    Str.StripLeft
+                    
+                    if dup Str.Size 0 > do
+                        if dup not_comment do
+                            IntoToken
+                            if dup Token.Type INVALID == do
+                                drop
+                            else
+                                Token.Print
+                            end
+                            true
+                        else
+                            drop drop false
+                        end  
+                    else
+                        drop drop true
+                    end
+                    
+                else
+                    update_loc
+                    Str.StripLeft
+                    if dup Str.Size 0 > do
+                        if dup not_comment do
+                            IntoToken
+                            if dup Token.Type INVALID == do
+                                drop
+                            else
+                                Token.Print
+                            end
+                            true
+                        else
+                            drop drop false
+                        end  
+                    else
+                        drop drop false
+                    end
+                end
+                
+            do end
+            drop true
+        else
+            drop false
+        end
+    do
+        swap Loc.IncrementLine swap
+    end 
+    
+    drop drop
+
+end
+
+"lexer.tlp" tokenize_file

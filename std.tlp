@@ -4,6 +4,18 @@ use "libs/str.tlp"
 const PUTD_BUFFER_SIZE 20 end
 reserve putd_buffer PUTD_BUFFER_SIZE end
 
+const STATBUF_CAP 144 end
+const STATBUF_SIZE_OFFSET 48 end
+const FILE_BUFFER_CAP 1000000 end
+
+reserve statbuf STATBUF_CAP end
+fn statbuf.size ptr -> int do
+    cast(int) STATBUF_SIZE_OFFSET + cast(ptr) @64
+end
+
+reserve file_buffer FILE_BUFFER_CAP end
+
+
 // File permissions
 const O_RDONLY    0       end 
 const O_WRONLY    1       end
@@ -47,7 +59,7 @@ const S_ISUID 1 10 << end
 const S_ISGID 1 11 << end
 
 fn stdout -> FileDesc do
-    1 as FileDesc
+    1 cast(FileDesc)
 end
 
 fn exit int do
@@ -58,14 +70,14 @@ end
 // No error handling is done here.
 fn eputs Str do
     
-    split 2 as FileDesc sys_write drop drop
+    split 2 cast(FileDesc) sys_write drop drop
 end     
 
 // Prints a String to stdout.
 // Error messages put to stderr.
 fn puts Str do
     // dup Str.Size putu
-    dup split 1 as FileDesc
+    dup split 1 cast(FileDesc)
     
     if sys_write swap drop do
         drop    // Str
@@ -113,7 +125,7 @@ fn fputd FileDesc int -> FileDesc do
         drop "0" puts 
     else
     
-        putd_buffer as int PUTD_BUFFER_SIZE 1 - + as ptr swap
+        putd_buffer cast(int) PUTD_BUFFER_SIZE 1 - + cast(ptr) swap
 
         // ptr int 
         while dup 0 > do
@@ -125,15 +137,15 @@ fn fputd FileDesc int -> FileDesc do
             
             split
             10 / swap
-            as int 1 - as ptr swap
+            cast(int) 1 - cast(ptr) swap
 
         end drop
 
-        as int 1 +
+        cast(int) 1 +
 
-        dup putd_buffer as int PUTD_BUFFER_SIZE + swap -
-        swap as ptr
-        as Str fputs
+        dup putd_buffer cast(int) PUTD_BUFFER_SIZE + swap -
+        swap cast(ptr)
+        cast(Str) fputs
 
     end
 end
@@ -179,4 +191,92 @@ fn stat ptr Str do
     if sys_stat do else 
         "Stat failed\n" eputs
     end
+end
+
+fn load_file_to_str Str -> Str do
+    dup 
+    statbuf swap stat
+
+    if statbuf statbuf.size FILE_BUFFER_CAP > do 
+        "File too big to read.\n" eputs
+        1 exit
+    end
+
+    O_RDONLY swap 0 swap fopen dup
+    statbuf statbuf.size swap
+    file_buffer swap
+    
+    if sys_read do
+        drop
+        fclose
+    else
+        "Failed to read from file\n" eputs
+        drop
+        fclose 
+        1 exit
+    end
+    
+    statbuf statbuf.size file_buffer cast(Str)
+
+end 
+
+struct pair
+    int int 
+end
+
+struct temp
+    pair int 
+end
+
+fn mul int int -> int do 
+    cast(pair) 0 cast(temp)
+    // T[ P[a b] r] 
+    while dup temp.0 pair.1 0 > do
+        // P[a (b-1)] (r+a) 
+        dup split swap pair.0 + swap
+        temp.0 split 1 - cast(pair) swap cast(temp)
+    end
+    temp.1
+end
+
+fn exp int int -> int do
+    cast(pair) 1 cast(temp)
+    // T[ P[a b] r] 
+    while dup temp.0 pair.1 0 > do
+        // P[a (b-1)] (r+a) 
+        dup split swap pair.0 mul swap
+        temp.0 split 1 - cast(pair) swap cast(temp)
+    end
+    temp.1
+
+end
+
+fn not bool -> bool do
+    if do
+        false
+    else 
+        true
+    end
+end
+
+fn Str.ToInt Str -> int do 
+    if dup Str.Numeric do 
+        0 swap
+        while dup Str.Size 0 > do 
+
+            // (10^(Str.Size - 1)*int(Str[0]))+result Str 
+            2 group dup dup dup
+            group.1 Str.Size 1 - 10 swap exp swap
+            group.1 0 Str.At ASCII_0 - mul swap
+            group.0 + swap
+            group.1 1 Str.ShiftRightBy
+
+        end drop
+        
+    else 
+        eputs "is not numeric!\n" eputs
+        1 exit
+        0
+    end
+
 end

@@ -53,9 +53,7 @@ class Intrinsic(Enum):
     DROP = 'drop'
     SWAP = 'swap'
     SPLIT = 'split'
-    CAST_INT = 'as int'
-    CAST_PTR = 'as ptr'
-    CAST_STRUCT = 'as [a-zA-Z]\w*'
+    CAST = 'cast\([a-zA-Z]\w*\)'
     INNER_TUPLE = 'group\.[0-9]+'
     CAST_TUPLE = 'group'
     SYSCALL0 = 'syscall0'
@@ -163,8 +161,8 @@ def to_value(s: str, tok: TokenType) -> Any:
     if isinstance(tok, Keyword):
         return None
     elif isinstance(tok, Intrinsic):
-        if tok == Intrinsic.CAST_STRUCT:
-            return s[3:]
+        if tok == Intrinsic.CAST:
+            return s[5:-1]
         elif tok == Intrinsic.INNER_TUPLE:
             return int(s[s.find('.')+1:])
         else:

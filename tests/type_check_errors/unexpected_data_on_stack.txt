@@ -3,6 +3,6 @@ args: ['python3', 'tulip.py', './tests/type_check_errors/unexpected_data_on_stac
 --------------------------
 -------- stderr ----------
 ./tests/type_check_errors/unexpected_data_on_stack.tlp:1:1 [ERROR]: Unhandled data on the datastack.
-        [Note]: Expected an empty stack found [DataType(Ident='int', Generic=False, Struct=False, Size=1)] instead
+    [Note]: Expected an empty stack found: [int]
 --------------------------
 exit code: 1

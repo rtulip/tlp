@@ -1,1 +1,1 @@
-1 as foo drop
+1 cast(foo) drop

@@ -4,8 +4,8 @@ args: ['python3', 'tulip.py', './tests/type_check_errors/bad_signature.tlp']
 -------- stderr ----------
 ./tests/type_check_errors/bad_signature.tlp:1:18 [ERROR]: 
     Didn't find a matching signature for OpType.INTRINSIC:Intrinsic.PUTU.
-    Expected: [DataType(Ident='int', Generic=False, Struct=False, Size=1)]
-    Found   : [DataType(Ident='Str', Generic=False, Struct=True, Size=2)]
+    Expected: [int]
+    Found   : [Str]
                 
 --------------------------
 exit code: 1
