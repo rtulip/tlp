@@ -366,6 +366,12 @@ def eval_const_ops(program: Program, tok: Token) -> Optional[Op]:
                 assert isinstance(a, int)
                 assert isinstance(b, int)
                 stack.append(a+b)
+            elif op.operand == Intrinsic.SUB:
+                b = stack.pop()
+                a = stack.pop()
+                assert isinstance(a, int)
+                assert isinstance(b, int)
+                stack.append(a-b)
             elif op.operand == Intrinsic.OR:
                 b = stack.pop()
                 a = stack.pop()
