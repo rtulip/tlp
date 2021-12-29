@@ -48,6 +48,8 @@ class Intrinsic(Enum):
     WRITE8 = "!8"
     OR = "or"
     AND = "and"
+    RPUSH = "push"
+    RPOP = 'pop'
     PUTU = "putu"
     DUP = 'dup'
     DROP = 'drop'

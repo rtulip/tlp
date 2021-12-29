@@ -8,6 +8,10 @@ args: ['python3', 'tulip.py', './tests/type_check_errors/if_block_different_stac
         Branch 1: [int]
         Branch 2: [bool]
 
+    Possible pushed values: 
+        Branch 1: []
+        Branch 2: []
+
         
 --------------------------
 exit code: 1
