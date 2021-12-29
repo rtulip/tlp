@@ -21,28 +21,23 @@ fn Loc.file Loc -> Str do
 end
 
 fn Loc.AddToColumn Loc int -> Loc do
-    2 group
-    // new_col [Loc int] 
-    dup
-    split swap
-    Loc.column +
-    swap split drop
-    dup Loc.line swap
-    Loc.file
-    cast(Loc)
+    
+    push split pop
+    swap push
+    swap push
+    + pop pop cast(Loc)
 end
 
 fn Loc.IncrementLine Loc -> Loc do
 
-    1 swap 
-    dup Loc.line 1 + swap
-    Loc.file cast(Loc)
-
+    split push swap drop
+    1 swap 1 + pop cast(Loc)
+    
 end
 
 fn Loc.Print Loc do
     split
-    puts ":" puts putd ":" puts 0 putd drop
+    puts ":" puts putd ":" puts putd
 end
 
 const TokenValue.IntKind  0                       end
@@ -454,7 +449,6 @@ fn update_loc
     Str.Data cast(int) swap
     Str.Data cast(int) swap -
 
-
     // LOC_UP F [Loc F D L W] 
     swap split
     5 group
@@ -481,7 +475,7 @@ end
 
 fn line_split_next Str -> Str Str do
 
-    Str.StripLeft
+    // "Begin: |" puts dup puts "|\n" puts
     if dup 0 Str.At ASCII_DOUBLE_QUOTE == do
 
         ASCII_DOUBLE_QUOTE Str.ChopByDelim swap
@@ -507,6 +501,8 @@ fn line_split_next Str -> Str Str do
             end
         end
     end
+
+    swap Str.StripLeft swap
 
     // 2group dup split
     // "Next: |" puts puts "|\n" puts
