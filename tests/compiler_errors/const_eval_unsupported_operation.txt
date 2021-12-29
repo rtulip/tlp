@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/const_eval_unsupported_op
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/const_eval_unsupported_operation.tlp:3:19 [ERROR]: Operation OpType.CALL:foo is not supported in constant expressions yet.
+./tests/compiler_errors/const_eval_unsupported_operation.tlp:3:17 [ERROR]: Operation OpType.CALL:foo is not supported in constant expressions yet.
 --------------------------
 exit code: 1

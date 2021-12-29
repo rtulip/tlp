@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/parse_use_eof.tlp']
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/parse_use_eof.tlp:1:3 [ERROR]: Expected a string after a `USE` statement, but found end of file instead
+./tests/compiler_errors/parse_use_eof.tlp:1:1 [ERROR]: Expected a string after a `USE` statement, but found end of file instead
 --------------------------
 exit code: 1

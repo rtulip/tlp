@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/type_check_errors/deref_group_too_small.t
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/type_check_errors/deref_group_too_small.tlp:1:17 [ERROR]: `GROUP` only has 1 members. Cannot access element 1
+./tests/type_check_errors/deref_group_too_small.tlp:1:11 [ERROR]: `GROUP` only has 1 members. Cannot access element 1
 --------------------------
 exit code: 1

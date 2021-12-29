@@ -2,7 +2,7 @@ args: ['python3', 'tulip.py', './tests/type_check_errors/operation_insufficient_
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/type_check_errors/operation_insufficient_args.tlp:1:6 [ERROR]: 
+./tests/type_check_errors/operation_insufficient_args.tlp:1:3 [ERROR]: 
         Operation OpType.INTRINSIC:Intrinsic.SWAP Requires 2 arguments. 1 found.
         [Note]: Expected [A B]
         [Note]: Found    [int]

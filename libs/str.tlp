@@ -228,4 +228,57 @@ fn Str.Numeric Str -> bool do
 
 
 end
- 
+
+fn Str.ChopByDelim Str int -> Str Str do
+
+
+    swap
+    2 group
+    if dup split 0 Str.At == do
+        split
+        swap drop
+        
+        dup 1 swap Str.Data cast(Str) swap
+        1 Str.ShiftRightBy swap
+
+    else
+        split 
+    
+        dup
+        split swap drop 0 swap cast(Str) swap
+
+        while
+            
+            if dup Str.Size 0 > do
+                
+                3 group dup dup
+                group.0 swap
+                group.2
+                // [D S' S] D==S1[0]
+                if 0 Str.At == do
+                    split
+                    false
+                else
+                    split
+                    true
+                end
+            else
+                false
+            end
+        do 
+            // Delim S0 S1
+            1 Str.ShiftRightBy swap
+            split swap 1 + swap cast(Str) swap
+        end
+
+        if dup Str.Size 0 > do
+            1 Str.ShiftRightBy swap
+            split swap 1 + swap cast(Str) swap
+        end
+
+        2 group
+        swap drop split swap
+    end
+
+    
+end

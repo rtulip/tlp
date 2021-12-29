@@ -99,12 +99,25 @@ class Loc:
     column: int
     file: str
 
+    def __str__(self) -> str:
+        return f"{self.file}:{self.line}:{self.column}"
+
 
 @dataclass
 class Token:
     typ: TokenType
     value: Any
     loc: Loc
+
+    def __str__(self) -> str:
+        if self.typ == MiscTokenKind.STRING:
+            return f"{self.loc}: {self.typ.name}: \"{self.value}\""
+        elif type(self.typ) == Keyword:
+            return f"{self.loc}: Keyword: {self.typ.name}"
+        elif type(self.typ) == Intrinsic:
+            return f"{self.loc}: Intrinsic: {self.typ.name}"
+        else:
+            return f"{self.loc}: {self.typ.name}: {self.value}"
 
 
 @dataclass
@@ -187,7 +200,7 @@ def to_value(s: str, tok: TokenType) -> Any:
 
 def tokenize_line(line: str, line_num: int, filename: str) -> List[Token]:
     tokens = []
-    cursor_pos = 0
+    cursor_pos = 1
     while len(line) > 0:
         typ, m = patterns.search(line)
         # Ignore comments and whitespace
@@ -203,14 +216,15 @@ def tokenize_line(line: str, line_num: int, filename: str) -> List[Token]:
             token_str = token_str[contains_comment.start():
                                   contains_comment.end()]
             line = line[contains_comment.start():]
-            cursor_pos += contains_comment.start()
+            pos_change = contains_comment.start()
         else:
             line = line[m.end():]
-            cursor_pos += m.end()
+            pos_change = m.end()
 
         tokens.append(Token(typ=typ,
                             value=to_value(token_str, typ),
                             loc=Loc(line=line_num, column=cursor_pos, file=filename)))
+        cursor_pos += pos_change
 
     return tokens
 
@@ -233,3 +247,5 @@ if __name__ == "__main__":
         exit(1)
 
     tokens = tokenize(argv[1])
+    for token in tokens:
+        print(token)

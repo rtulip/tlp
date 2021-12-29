@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/parse_unexpected_keyword.
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/parse_unexpected_keyword.tlp:1:3 [ERROR]: Unexpected Keyword: Keyword.END
+./tests/compiler_errors/parse_unexpected_keyword.tlp:1:1 [ERROR]: Unexpected Keyword: Keyword.END
 --------------------------
 exit code: 1

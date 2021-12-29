@@ -42,7 +42,7 @@ end
 
 fn Loc.Print Loc do
     split
-    puts ":" puts putd ":" puts putd
+    puts ":" puts putd ":" puts 0 putd drop
 end
 
 const TokenValue.IntKind  0                       end
@@ -204,6 +204,7 @@ const Intrinsic.SYSCALL6    Intrinsic.SYSCALL5 1 +      end
 fn Intrinsic.Print int do
 
     if dup Intrinsic.ADD == do
+        "ADD" puts
     else dup Intrinsic.SUB == do
         "SUB" puts
     else dup Intrinsic.DIV == do
@@ -282,9 +283,9 @@ fn Token.Print Token do
     else dup Token.Type.Intrinsic == do
         drop "Intrinsic: " puts TokenValue.Int Intrinsic.Print "\n" puts
     else dup Token.Type.INT == do 
-        drop "Int: " puts TokenValue.Int putu
+        drop "INT: " puts TokenValue.Int putu
     else dup Token.Type.BOOL == do
-        drop "bool: " puts 
+        drop "BOOL: " puts 
         if TokenValue.Bool do
             "true\n"
         else
@@ -292,9 +293,9 @@ fn Token.Print Token do
         end
         puts
     else dup Token.Type.STR == do
-        drop "String: " puts TokenValue.Str puts "\n" puts
+        drop "STRING: " puts TokenValue.Str puts "\n" puts
     else dup Token.Type.WORD == do
-        drop "Word: " puts TokenValue.Str puts "\n" puts
+        drop "WORD: " puts TokenValue.Str puts "\n" puts
     else
         "Unrecognized Token\n" puts
         drop drop 
@@ -432,7 +433,8 @@ fn IntoToken Loc Str -> Token do
         // Str
         dup dup
         0 Str.At ASCII_DOUBLE_QUOTE == swap
-        dup Str.Size 1 - Str.At ASCII_DOUBLE_QUOTE == and
+        dup Str.Size 1 - Str.At ASCII_DOUBLE_QUOTE == 
+        and
     do
         TokenValue.FromStr Token.Type.STR cast(Token)
     else 
@@ -477,6 +479,71 @@ fn not_comment Str -> bool do
     end
 end
 
+fn line_split_next Str -> Str Str do
+
+    Str.StripLeft
+    if dup 0 Str.At ASCII_DOUBLE_QUOTE == do
+
+        ASCII_DOUBLE_QUOTE Str.ChopByDelim swap
+        ASCII_DOUBLE_QUOTE Str.ChopByDelim swap
+        3 group dup split drop
+
+        2 group dup
+        split
+        Str.Size swap Str.Size +
+        swap
+
+        split drop Str.Data
+        cast(Str)
+        swap group.2 swap
+
+    else
+        " " 0 Str.At Str.ChopByDelim 
+        if dup Str.Size 0 > do
+            
+            // S S[(S.Size-1)]
+            if dup dup Str.Size 1 - Str.At " " 0 Str.At == do
+                1 Str.ShiftLeftBy
+            end
+        end
+    end
+
+    // 2group dup split
+    // "Next: |" puts puts "|\n" puts
+    // "Remain: |" puts puts "|\n" puts
+    // split 
+
+end
+
+fn tokenize_line 
+    Loc Str Str // Loc F L
+    -> 
+    Loc Str     // Loc F
+do
+    // Loc F L W
+    // "Line: |" puts dup puts "|\n" puts
+    line_split_next
+    // "  Word: `" puts dup puts "`\n" puts
+    while
+        dup dup Str.Size 0 > swap
+        not_comment and    
+    do
+        
+        update_loc
+        IntoToken
+        if dup Token.Type INVALID == do
+            drop
+        else
+            Token.Print
+        end
+        
+        line_split_next
+        // "  Word: `" puts dup puts "`\n" puts
+    end
+    drop drop
+    
+end
+
 fn tokenize_file Str do
     
     dup 
@@ -486,49 +553,7 @@ fn tokenize_file Str do
         
         if Str.SplitLine do 
             // Loc File_rem Line
-            while 
-                if Str.Split do
-                    update_loc
-                    Str.StripLeft
-                    
-                    if dup Str.Size 0 > do
-                        if dup not_comment do
-                            IntoToken
-                            if dup Token.Type INVALID == do
-                                drop
-                            else
-                                Token.Print
-                            end
-                            true
-                        else
-                            drop drop false
-                        end  
-                    else
-                        drop drop true
-                    end
-                    
-                else
-                    update_loc
-                    Str.StripLeft
-                    if dup Str.Size 0 > do
-                        if dup not_comment do
-                            IntoToken
-                            if dup Token.Type INVALID == do
-                                drop
-                            else
-                                Token.Print
-                            end
-                            true
-                        else
-                            drop drop false
-                        end  
-                    else
-                        drop drop false
-                    end
-                end
-                
-            do end
-            drop true
+            tokenize_line true
         else
             drop false
         end
@@ -540,4 +565,4 @@ fn tokenize_file Str do
 
 end
 
-"lexer.tlp" tokenize_file
+"lexer.tlp" tokenize_file 

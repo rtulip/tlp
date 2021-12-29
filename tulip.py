@@ -131,14 +131,9 @@ assert len(signatures) == len(OpType) - N_SUM_IGNORE + len(Intrinsic), \
     f"Not all OpTypes and Intrinsics have a signature. Expected {len(OpType) - N_SUM_IGNORE + len(Intrinsic)} Found {len(signatures)}"
 
 
-def token_loc_str(token: Token):
-    return f"{token.loc.file}:{token.loc.line}:{token.loc.column}"
-
-
 def compiler_error(predicate: bool, token: Token, msg):
     if not predicate:
-        print(
-            f"{token_loc_str(token)} [ERROR]: {msg}", file=sys.stderr)
+        print(f"{token.loc} [ERROR]: {msg}", file=sys.stderr)
         exit(1)
 
 
@@ -153,7 +148,7 @@ def check_for_name_conflict(
         compiler_error(
             False,
             tok,
-            f"Redefinition of `{name}`. Previously defined here: {token_loc_str(fn_meta[name].tok)}"
+            f"Redefinition of `{name}`. Previously defined here: {fn_meta[name].tok.loc}"
         )
 
     if name in TypeDict.keys():
@@ -167,14 +162,14 @@ def check_for_name_conflict(
         compiler_error(
             False,
             tok,
-            f"Redefinition of `{name}`. Previously defined here: {token_loc_str(const_values[name].tok)}"
+            f"Redefinition of `{name}`. Previously defined here: {const_values[name].tok.loc}"
         )
 
     if name in reserved_memory.keys():
         compiler_error(
             False,
             tok,
-            f"Redefinition of `{name}`. Previously defined here: {token_loc_str(reserved_memory[name][1])}"
+            f"Redefinition of `{name}`. Previously defined here: {reserved_memory[name][1].loc}"
         )
 
 
@@ -1530,7 +1525,7 @@ def type_check_program(
         if any([cond(op) for cond in break_on]):
             break
 
-        assert op.op != OpType.JUMP_COND, f"{token_loc_str(op.tok)} Type Checking error: Unhandled conditional jump"
+        assert op.op != OpType.JUMP_COND, f"{op.tok.loc} Type Checking error: Unhandled conditional jump"
 
         if op.op == OpType.NOP and op.tok.typ == Keyword.IF:
             ip, type_stack = type_check_if_block(

@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/const_body_empty.tlp']
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/const_body_empty.tlp:1:5 [ERROR]: `CONST` body must evaluate to a single value
+./tests/compiler_errors/const_body_empty.tlp:1:1 [ERROR]: `CONST` body must evaluate to a single value
 --------------------------
 exit code: 1

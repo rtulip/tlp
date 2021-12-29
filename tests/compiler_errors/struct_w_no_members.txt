@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/struct_w_no_members.tlp']
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/struct_w_no_members.tlp:1:14 [ERROR]: Structs must have at least one member
+./tests/compiler_errors/struct_w_no_members.tlp:1:12 [ERROR]: Structs must have at least one member
 --------------------------
 exit code: 1

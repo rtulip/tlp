@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/reserve_name_non_int.tlp'
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/reserve_name_non_int.tlp:1:15 [ERROR]: Unrecognized WORD int.
+./tests/compiler_errors/reserve_name_non_int.tlp:1:13 [ERROR]: Unrecognized WORD int.
 --------------------------
 exit code: 1
