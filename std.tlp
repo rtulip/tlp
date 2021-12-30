@@ -1,6 +1,11 @@
 use "sys_x86_64_linux.tlp"
 use "libs/str.tlp"
 
+const SizeOf(int)  8 end
+const SizeOf(bool) 8 end
+const SizeOf(ptr)  8 end
+const SizeOf(Str)  SizeOf(int) SizeOf(ptr) + end
+
 const PUTD_BUFFER_SIZE 20 end
 reserve putd_buffer PUTD_BUFFER_SIZE end
 
