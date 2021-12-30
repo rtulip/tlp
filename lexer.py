@@ -1,3 +1,4 @@
+from os import unsetenv
 from sys import argv
 from enum import Enum, unique
 from dataclasses import dataclass
@@ -37,6 +38,7 @@ class Intrinsic(Enum):
     ADD = "\+"
     SUB = "-"
     DIV = "/"
+    MUL = "\*"
     MOD = "%"
     EQ = "=="
     LE = "<="
@@ -45,6 +47,7 @@ class Intrinsic(Enum):
     GT = ">"
     READ64 = "@64"
     READ8 = "@8"
+    WRITE64 = "!64"
     WRITE8 = "!8"
     OR = "or"
     AND = "and"
@@ -113,7 +116,7 @@ class Token:
 
     def __str__(self) -> str:
         if self.typ == MiscTokenKind.STRING:
-            return f"{self.loc}: {self.typ.name}: \"{self.value}\""
+            return f"{self.loc}: {self.typ.name}: \"{repr(self.value)[1:-1]}\""
         elif type(self.typ) == Keyword:
             return f"{self.loc}: Keyword: {self.typ.name}"
         elif type(self.typ) == Intrinsic:
@@ -249,5 +252,6 @@ if __name__ == "__main__":
         exit(1)
 
     tokens = tokenize(argv[1])
+    # tokens.reverse()
     for token in tokens:
         print(token)

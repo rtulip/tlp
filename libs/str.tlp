@@ -159,6 +159,23 @@ fn Str.StripLeft Str -> Str do
     end 
 end
 
+fn Str.StripRight Str -> Str do
+    
+    while 
+        if dup Str.Size 0 > do
+            if dup dup Str.Size 1 - Str.At 32 == do
+                
+                split swap 1 - swap cast(Str)
+                true
+            else
+                false
+            end
+        else
+            false
+        end
+    do end 
+end
+
 fn Str.Split Str -> Str Str bool do
 
     dup

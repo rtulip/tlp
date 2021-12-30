@@ -2,6 +2,7 @@ use "std.tlp"
 
 const INVALID 0 1 - end
 
+const SizeOf(Loc) SizeOf(int) SizeOf(int) SizeOf(Str) + + end
 struct Loc
     int // column
     int // line
@@ -44,6 +45,7 @@ const TokenValue.IntKind  0                       end
 const TokenValue.StrKind  TokenValue.IntKind  1 + end
 const TokenValue.BoolKind TokenValue.StrKind  1 + end
 const TokenValue.WordKind TokenValue.BoolKind 1 + end
+const SizeOf(TokenValue) SizeOf(int) SizeOf(Str) SizeOf(int) + + end
 struct TokenValue
     int // int value
     Str // Str Value
@@ -103,7 +105,6 @@ fn TokenValue.Bool TokenValue -> bool do
     end
 end
 
-
 struct Token
     Loc         // loc
     TokenValue  // value
@@ -120,6 +121,62 @@ end
 
 fn Token.Type Token -> int do
     Token.2
+end
+
+const SizeOf(Token) SizeOf(Loc) SizeOf(TokenValue) SizeOf(int) + + end
+const TokenListCap 100000 end
+reserve TokenListData TokenListCap SizeOf(Token) * end
+reserve TokenListSize SizeOf(int) end
+reserve TokenListPtr  SizeOf(ptr) end
+
+fn TokenList.Init do
+
+    TokenListData TokenListPtr !64
+    0 TokenListSize !64
+
+end
+
+fn TokenList.Push Token do
+
+    TokenListPtr @64 push
+    split
+
+    pop dup SizeOf(int) + push cast(ptr) !64  // Token.Type
+    split
+    pop dup SizeOf(int) + push cast(ptr) !64  // Token.TokenValue.Kind
+    split
+    pop dup SizeOf(int) + push cast(ptr) !64  // Token.TokenValue.Str.Data
+    pop dup SizeOf(int) + push cast(ptr) !64  // Token.TokenValue.Str.Size
+    pop dup SizeOf(int) + push cast(ptr) !64  // Token.TokenValue.int
+    split split
+    pop dup SizeOf(int) + push cast(ptr) !64  // Token.Loc.File.Data
+    pop dup SizeOf(int) + push cast(ptr) !64  // Token.Loc.File.Size
+    pop dup SizeOf(int) + push cast(ptr) !64  // Token.Loc.Line
+    pop dup SizeOf(int) + push cast(ptr) !64  // Token.Loc.Column
+
+    pop TokenListPtr !64
+    TokenListSize @64 1 + TokenListSize !64
+end
+
+fn TokenList.Pop -> Token do
+
+    TokenListPtr @64 SizeOf(int) - push
+    pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.Column
+    pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.Line
+    pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.File.Size
+    pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.File.Data
+    cast(ptr) cast(Str) cast(Loc)
+    pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.int
+    pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.Str.Size
+    pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.Str.Data
+    cast(ptr) cast(Str)
+    pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.Kind
+    cast(TokenValue)
+    pop dup push cast(ptr) @64 // Token.Type
+    cast(Token)
+
+    pop TokenListPtr !64
+    TokenListSize @64 1 - TokenListSize !64
 end
 
 const Token.Type.Keyword    0 end
@@ -168,7 +225,8 @@ end
 const Token.Type.Intrinsic  1                           end
 const Intrinsic.ADD         0                           end
 const Intrinsic.SUB         Intrinsic.ADD 1 +           end
-const Intrinsic.DIV         Intrinsic.SUB 1 +           end
+const Intrinsic.MUL         Intrinsic.SUB 1 +           end
+const Intrinsic.DIV         Intrinsic.MUL 1 +           end
 const Intrinsic.MOD         Intrinsic.DIV 1 +           end
 const Intrinsic.EQ          Intrinsic.MOD 1 +           end
 const Intrinsic.LE          Intrinsic.EQ 1 +            end
@@ -177,8 +235,11 @@ const Intrinsic.LT          Intrinsic.LSL 1 +           end
 const Intrinsic.GT          Intrinsic.LT 1 +            end
 const Intrinsic.READ64      Intrinsic.GT 1 +            end
 const Intrinsic.READ8       Intrinsic.READ64 1 +        end
-const Intrinsic.WRITE8      Intrinsic.READ8 1 +         end
-const Intrinsic.OR          Intrinsic.WRITE8 1 +        end
+const Intrinsic.WRITE64     Intrinsic.READ8 1 +         end
+const Intrinsic.WRITE8      Intrinsic.WRITE64 1 +       end
+const Intrinsic.RPUSH       Intrinsic.WRITE8 1 +        end
+const Intrinsic.RPOP        Intrinsic.RPUSH 1 +         end
+const Intrinsic.OR          Intrinsic.RPOP 1 +          end
 const Intrinsic.AND         Intrinsic.OR 1 +            end
 const Intrinsic.PUTU        Intrinsic.AND 1 +           end
 const Intrinsic.DUP         Intrinsic.PUTU 1 +          end
@@ -202,6 +263,8 @@ fn Intrinsic.Print int do
         "ADD" puts
     else dup Intrinsic.SUB == do
         "SUB" puts
+    else dup Intrinsic.MUL == do
+        "MUL" puts
     else dup Intrinsic.DIV == do
         "DIV" puts
     else dup Intrinsic.MOD == do
@@ -222,6 +285,12 @@ fn Intrinsic.Print int do
         "READ8" puts
     else dup Intrinsic.WRITE8 == do
         "WRITE8" puts
+    else dup Intrinsic.WRITE64 == do
+        "WRITE64" puts
+    else dup Intrinsic.RPUSH == do
+        "RPUSH" puts
+    else dup Intrinsic.RPOP == do
+        "RPOP" puts
     else dup Intrinsic.OR == do
         "OR" puts
     else dup Intrinsic.AND == do
@@ -341,6 +410,8 @@ fn IsIntrinsic Str -> int bool do
         drop Intrinsic.ADD 
     else dup "-" Str.Equals do
         drop Intrinsic.SUB
+    else dup "*" Str.Equals do
+        drop Intrinsic.MUL
     else dup "/" Str.Equals do
         drop Intrinsic.DIV
     else dup "%" Str.Equals do
@@ -361,6 +432,8 @@ fn IsIntrinsic Str -> int bool do
         drop Intrinsic.READ8
     else dup "!8" Str.Equals do
         drop Intrinsic.WRITE8
+    else dup "!64" Str.Equals do
+        drop Intrinsic.WRITE64
     else dup "or" Str.Equals do
         drop Intrinsic.OR
     else dup "and" Str.Equals do
@@ -398,7 +471,11 @@ fn IsIntrinsic Str -> int bool do
     else dup "syscall5" Str.Equals do
         drop Intrinsic.SYSCALL5
     else dup "syscall6" Str.Equals do
-        drop Intrinsic.SYSCALL6  
+        drop Intrinsic.SYSCALL6
+    else dup "push" Str.Equals do
+        drop Intrinsic.RPUSH
+    else dup "pop" Str.Equals do
+        drop Intrinsic.RPOP
     else
         drop INVALID
     end
@@ -412,7 +489,7 @@ fn IsIntrinsic Str -> int bool do
 end
 
 fn IntoToken Loc Str -> Token do
-    
+
     // Str int
     if dup IsKeyword do
         swap drop TokenValue.FromInt Token.Type.Keyword cast(Token)
@@ -432,9 +509,12 @@ fn IntoToken Loc Str -> Token do
         and
     do
         TokenValue.FromStr Token.Type.STR cast(Token)
-    else 
+    else dup Str.Size 0 > do
         TokenValue.FromStr Token.Type.WORD cast(Token)
+    else
+        TokenValue.FromStr INVALID cast(Token)
     end
+
 
 end
 
@@ -493,21 +573,40 @@ fn line_split_next Str -> Str Str do
 
     else
         " " 0 Str.At Str.ChopByDelim 
-        if dup Str.Size 0 > do
+        // if dup Str.Size 0 > do
             
-            // S S[(S.Size-1)]
-            if dup dup Str.Size 1 - Str.At " " 0 Str.At == do
-                1 Str.ShiftLeftBy
-            end
-        end
+        //     // S S[(S.Size-1)]
+        //     if dup dup Str.Size 1 - Str.At " " 0 Str.At == do
+        //         1 Str.ShiftLeftBy
+        //     end
+        // end
     end
 
-    swap Str.StripLeft swap
+    // "*********************************\n" puts
+    // 2group dup split
+    // "  Before Strip Next: |" puts puts "|\n" puts
+    // "  Before Strip Remain: |" puts puts "|\n" puts
+    // split
+
+    Str.StripRight
+    // swap Str.StripLeft swap
 
     // 2group dup split
-    // "Next: |" puts puts "|\n" puts
-    // "Remain: |" puts puts "|\n" puts
+    // "  After Strip Next: |" puts puts "|\n" puts
+    // "  After Strip Remain: |" puts puts "|\n" puts
     // split 
+
+end
+
+fn bor bool bool -> bool do
+
+    if do
+        drop true
+    else do
+        true
+    else
+        false
+    end
 
 end
 
@@ -519,10 +618,15 @@ do
     // Loc F L W
     // "Line: |" puts dup puts "|\n" puts
     line_split_next
-    // "  Word: `" puts dup puts "`\n" puts
+    // "  Word: `" puts dup puts "`\n" puts swap
+    // "  Rem:  `" puts dup puts "`\n" puts swap 
     while
-        dup dup Str.Size 0 > swap
-        not_comment and    
+        // L W    
+        // NC (W.Sz 0 >)
+        dup not_comment push swap
+        dup Str.Size 0 > push swap
+        dup Str.Size 0 > 
+        pop bor pop and
     do
         
         update_loc
@@ -530,11 +634,14 @@ do
         if dup Token.Type INVALID == do
             drop
         else
+            // TokenList.Push
             Token.Print
         end
         
         line_split_next
-        // "  Word: `" puts dup puts "`\n" puts
+        // "  Word: `" puts dup puts "`\n" puts swap
+        // "  Rem:  `" puts dup puts "`\n" puts swap 
+    
     end
     drop drop
     
@@ -542,6 +649,8 @@ end
 
 fn tokenize_file Str do
     
+    TokenList.Init
+
     dup 
     1 swap 1 swap cast(Loc) swap
     load_file_to_str
@@ -561,4 +670,4 @@ fn tokenize_file Str do
 
 end
 
-"lexer.tlp" tokenize_file 
+"lexer.tlp" tokenize_file
