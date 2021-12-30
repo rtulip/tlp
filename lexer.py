@@ -252,6 +252,6 @@ if __name__ == "__main__":
         exit(1)
 
     tokens = tokenize(argv[1])
-    # tokens.reverse()
+    tokens.reverse()
     for token in tokens:
         print(token)

@@ -634,8 +634,8 @@ do
         if dup Token.Type INVALID == do
             drop
         else
-            // TokenList.Push
-            Token.Print
+            TokenList.Push
+            // Token.Print
         end
         
         line_split_next
@@ -671,3 +671,7 @@ fn tokenize_file Str do
 end
 
 "lexer.tlp" tokenize_file
+
+while TokenListSize @64 0 > do
+    TokenList.Pop Token.Print
+end
