@@ -285,3 +285,8 @@ fn Str.ToInt Str -> int do
     end
 
 end
+
+fn ptr_offset ptr int -> ptr do
+    swap
+    cast(int) + cast(ptr)
+end

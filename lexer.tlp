@@ -123,6 +123,12 @@ fn Token.Type Token -> int do
     Token.2
 end
 
+fn Token.Default -> Token do
+    INVALID INVALID "" cast(Loc)
+    "" TokenValue.FromStr
+    INVALID cast(Token)
+end
+
 const SizeOf(Token) SizeOf(Loc) SizeOf(TokenValue) SizeOf(int) + + end
 const TokenListCap 100000 end
 reserve TokenListData TokenListCap SizeOf(Token) * end
@@ -177,6 +183,37 @@ fn TokenList.Pop -> Token do
 
     pop TokenListPtr !64
     TokenListSize @64 1 - TokenListSize !64
+end
+
+fn TokenList.Index int -> Token do
+
+    if dup TokenListSize @64 < do 
+
+        1 + SizeOf(Token) *
+        TokenListData swap
+        ptr_offset cast(int) SizeOf(int) -  push
+
+        pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.Column
+        pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.Line
+        pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.File.Size
+        pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.File.Data
+        cast(ptr) cast(Str) cast(Loc)
+        pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.int
+        pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.Str.Size
+        pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.Str.Data
+        cast(ptr) cast(Str)
+        pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.Kind
+        cast(TokenValue)
+        pop cast(ptr) @64 // Token.Type
+        cast(Token)
+    else
+        drop 
+        Token.Default
+    end
+end
+
+fn TokenList.Size -> int do
+    TokenListSize @64 
 end
 
 const Token.Type.Keyword    0 end
@@ -655,12 +692,15 @@ fn tokenize_file Str do
     1 swap 1 swap cast(Loc) swap
     load_file_to_str
     while 
-        
         if Str.SplitLine do 
+            // "A: `" puts dup puts "`\n" puts
+            // "B: `" puts dup puts "`\n" puts
+        
             // Loc File_rem Line
             tokenize_line true
         else
-            drop false
+            tokenize_line
+            false
         end
     do
         swap Loc.IncrementLine swap
@@ -672,6 +712,8 @@ end
 
 "lexer.tlp" tokenize_file
 
-while TokenListSize @64 0 > do
-    TokenList.Pop Token.Print
-end
+TokenList.Size
+while dup 0 > do
+    1 - 
+    dup TokenList.Index Token.Print
+end drop
