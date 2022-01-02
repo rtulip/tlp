@@ -189,6 +189,13 @@ fn @Token ptr -> Token ptr do
     push cast(Token) pop
 end
 
+struct Array
+    int // Capacit 
+    ptr // Data
+    int // Size
+    ptr // Ptr
+end
+
 fn Tokens.Push Token do
 
     TokensPtr @64 cast(ptr) !Token TokensPtr !64
@@ -324,79 +331,83 @@ const Intrinsic.SYSCALL4    Intrinsic.SYSCALL3 1 +      end
 const Intrinsic.SYSCALL5    Intrinsic.SYSCALL4 1 +      end
 const Intrinsic.SYSCALL6    Intrinsic.SYSCALL5 1 +      end
 
-fn Intrinsic.Print int do
-
+fn Intrinsic.fPrint FileDesc int -> FileDesc do
     if dup Intrinsic.ADD == do
-        "ADD" puts
+        "ADD" 
     else dup Intrinsic.SUB == do
-        "SUB" puts
+        "SUB"
     else dup Intrinsic.MUL == do
-        "MUL" puts
+        "MUL"
     else dup Intrinsic.DIV == do
-        "DIV" puts
+        "DIV"
     else dup Intrinsic.MOD == do
-        "MOD" puts
+        "MOD"
     else dup Intrinsic.EQ == do
-        "EQ" puts
+        "EQ" 
     else dup Intrinsic.LE == do
-        "LE" puts
+        "LE" 
     else dup Intrinsic.LSL == do
-        "LSL" puts
+        "LSL"
     else dup Intrinsic.LT == do
-        "LT" puts
+        "LT" 
     else dup Intrinsic.GT == do
-        "GT" puts
+        "GT" 
     else dup Intrinsic.READ64 == do
-        "READ64" puts
+        "READ64" 
     else dup Intrinsic.READ8 == do
-        "READ8" puts
+        "READ8" 
     else dup Intrinsic.WRITE8 == do
-        "WRITE8" puts
+        "WRITE8"
     else dup Intrinsic.WRITE64 == do
-        "WRITE64" puts
+        "WRITE64" 
     else dup Intrinsic.RPUSH == do
-        "RPUSH" puts
+        "RPUSH" 
     else dup Intrinsic.RPOP == do
-        "RPOP" puts
+        "RPOP" 
     else dup Intrinsic.OR == do
-        "OR" puts
+        "OR" 
     else dup Intrinsic.AND == do
-        "AND" puts
+        "AND" 
     else dup Intrinsic.PUTU == do
-        "PUTU" puts
+        "PUTU" 
     else dup Intrinsic.DUP == do
-        "DUP" puts
+        "DUP" 
     else dup Intrinsic.DROP == do
-        "DROP" puts
+        "DROP" 
     else dup Intrinsic.SWAP == do
-        "SWAP" puts
+        "SWAP" 
     else dup Intrinsic.SPLIT == do
-        "SPLIT" puts
+        "SPLIT" 
     else dup Intrinsic.CAST == do
-        "CAST" puts
+        "CAST" 
     else dup Intrinsic.INNER_TUPLE == do
-        "INNER_TUPLE" puts
+        "INNER_TUPLE"
     else dup Intrinsic.CAST_TUPLE == do
-        "CAST_TUPLE" puts
+        "CAST_TUPLE" 
     else dup Intrinsic.SYSCALL0 == do
-        "SYSCALL0" puts
+        "SYSCALL0" 
     else dup Intrinsic.SYSCALL1 == do
-        "SYSCALL1" puts
+        "SYSCALL1" 
     else dup Intrinsic.SYSCALL2 == do
-        "SYSCALL2" puts
+        "SYSCALL2" 
     else dup Intrinsic.SYSCALL3 == do
-        "SYSCALL3" puts
+        "SYSCALL3" 
     else dup Intrinsic.SYSCALL4 == do
-        "SYSCALL4" puts
+        "SYSCALL4" 
     else dup Intrinsic.SYSCALL5 == do
-        "SYSCALL5" puts
+        "SYSCALL5" 
     else dup Intrinsic.SYSCALL6 == do
-        "SYSCALL6" puts
+        "SYSCALL6"
     else
-        "INVALID" puts
+        "INVALID"
     end
+    swap drop
+    fputs
+    
+end
 
-    drop
+fn Intrinsic.Print int do
+    stdout swap Intrinsic.fPrint drop
 end
 
 const Token.Type.INT      2 end
@@ -429,6 +440,36 @@ fn Token.Print Token do
         drop "WORD: " puts TokenValue.Str puts "\n" puts
     else
         "Unrecognized Token\n" puts
+        drop drop 
+    end
+
+    drop
+end
+
+fn Token.ePrint Token do
+
+    dup Token.Loc Loc.Print ": " eputs
+    split
+    if dup Token.Type.Keyword == do
+        drop "Keyword: " eputs TokenValue.Int Keyword.Print
+    else dup Token.Type.Intrinsic == do
+        drop "Intrinsic: " eputs TokenValue.Int Intrinsic.Print
+    else dup Token.Type.INT == do 
+        drop "INT: " eputs TokenValue.Int putu
+    else dup Token.Type.BOOL == do
+        drop "BOOL: " eputs 
+        if TokenValue.Bool do
+            "true"
+        else
+            "false"
+        end
+        eputs
+    else dup Token.Type.STR == do
+        drop "STRING: " eputs TokenValue.Str eputs
+    else dup Token.Type.WORD == do
+        drop "WORD: " eputs TokenValue.Str eputs
+    else
+        "Unrecognized Token" eputs
         drop drop 
     end
 

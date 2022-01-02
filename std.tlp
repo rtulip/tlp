@@ -134,7 +134,7 @@ end
 fn fputd FileDesc int -> FileDesc do
 
     if dup 0 == do
-        drop "0" puts 
+        drop "0" fputs 
     else
     
         putd_buffer cast(int) PUTD_BUFFER_SIZE 1 - + cast(ptr) swap

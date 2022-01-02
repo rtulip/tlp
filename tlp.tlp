@@ -12,20 +12,48 @@ const OpType.RETURN         OpType.JUMP 1 +         end
 const OpType.CALL           OpType.RETURN 1 +       end
 const OpType.NOP            OpType.CALL 1 +         end
 
+fn OpType.fPrint int FileDesc  -> FileDesc do
+    swap 
+    if dup OpType.PUSH_UINT == do
+        drop "OpType.PUSH_UINT" fputs
+    else dup OpType.PUSH_BOOL == do 
+        drop "OpType.PUSH_BOOL" fputs
+    else dup OpType.PUSH_PTR == do 
+        drop "OpType.PUSH_PTR" fputs
+    else dup OpType.PUSH_STRING == do 
+        drop "OpType.PUSH_STRING" fputs
+    else dup OpType.INTRINSIC == do 
+        drop "OpType.INTRINSIC" fputs
+    else dup OpType.JUMP_COND == do 
+        drop "OpType.JUMP_COND" fputs
+    else dup OpType.JUMP == do 
+        drop "OpType.JUMP" fputs
+    else dup OpType.RETURN == do 
+        drop "OpType.RETURN" fputs
+    else dup OpType.CALL == do 
+        drop "OpType.CALL" fputs
+    else dup OpType.NOP == do
+        drop "OpType.NOP" fputs
+    else
+        drop "INVALID OpType!" fputs
+    end
+
+end
+
 const SizeOf(Op) SizeOf(int) SizeOf(Token) SizeOf(TokenValue) + + end
 struct Op
-    int        // OpType
     Token      // token
     TokenValue // Operand
+    int        // OpType
 end
 
 fn !Op Op ptr -> ptr do
     push split pop
-    !TokenValue !Token !int
+    !int !TokenValue !Token 
 end
 
 fn @Op ptr -> Op ptr do
-    @int @Token @TokenValue
+    @Token @TokenValue @int  
     push cast(Op) pop
 end
 
@@ -63,14 +91,187 @@ fn Program.Index int -> Op do
     end
 end
 
+fn compiler_error Str Token bool do
+    if not do
+        Token.ePrint " [ERROR]: " eputs eputs "\n" eputs
+        1 exit
+    else drop drop
+    end
+end
+
+fn parse_tokens_until_keywords int -> Token do
+
+    drop
+
+    while Tokens.Size 0 > do
+        Tokens.Pop 
+        dup Token.Type
+        if   dup Token.Type.INT == do
+            drop dup 
+            Token.Value OpType.PUSH_UINT cast(Op) Program.Push
+        else dup Token.Type.STR == do
+            drop dup
+            Token.Value OpType.PUSH_STRING cast(Op) Program.Push
+        else dup Token.Type.BOOL == do
+            drop dup
+            Token.Value OpType.PUSH_BOOL cast(Op) Program.Push
+        else dup Token.Type.WORD == do
+            drop
+            "Word Tokens aren't handled yet." swap false compiler_error
+        else dup Token.Type.Intrinsic == do
+            drop
+            dup Token.Value TokenValue.Int 
+            if dup Intrinsic.CAST_TUPLE == do
+                drop "CAST_TUPLE isn't implemented yet" swap false compiler_error
+            else
+                drop dup Token.Value
+                OpType.INTRINSIC cast(Op) Program.Push 
+            end
+
+        else dup Token.Type.Keyword == do
+            drop 
+            "Keyword Tokens aren't handled yet." swap false compiler_error
+        else
+            // Invalid
+            drop
+            "Unhandled Token" swap false compiler_error
+        end
+
+    end
+
+    1 1 "" cast(Loc)
+    "" TokenValue.FromStr
+    INVALID cast(Token)
+
+end
+
+fn asm_header FileDesc -> FileDesc do
+    "segment .text\n" fputs
+    "putu:\n" fputs
+    "    mov     r9, -3689348814741910323\n" fputs
+    "    sub     rsp, 40\n" fputs
+    "    mov     BYTE [rsp+31], 10\n" fputs
+    "    lea     rcx, [rsp+30]\n" fputs
+    ".L2:\n" fputs
+    "    mov     rax, rdi\n" fputs
+    "    lea     r8, [rsp+32]\n" fputs
+    "    mul     r9\n" fputs
+    "    mov     rax, rdi\n" fputs
+    "    sub     r8, rcx\n" fputs
+    "    shr     rdx, 3\n" fputs
+    "    lea     rsi, [rdx+rdx*4]\n" fputs
+    "    add     rsi, rsi\n" fputs
+    "    sub     rax, rsi\n" fputs
+    "    add     eax, 48\n" fputs
+    "    mov     BYTE [rcx], al\n" fputs
+    "    mov     rax, rdi\n" fputs
+    "    mov     rdi, rdx\n" fputs
+    "    mov     rdx, rcx\n" fputs
+    "    sub     rcx, 1\n" fputs
+    "    cmp     rax, 9\n" fputs
+    "    ja      .L2\n" fputs
+    "    lea     rax, [rsp+32]\n" fputs
+    "    mov     edi, 1\n" fputs
+    "    sub     rdx, rax\n" fputs
+    "    xor     eax, eax\n" fputs
+    "    lea     rsi, [rsp+32+rdx]\n" fputs
+    "    mov     rdx, r8\n" fputs
+    "    mov     rax, 1\n" fputs
+    "    syscall\n" fputs
+    "    add     rsp, 40\n" fputs
+    "    ret\n" fputs
+    "global _start\n" fputs
+    "_start:\n" fputs
+    "    mov rax, ret_stack_end\n" fputs
+    "    mov [ret_stack_rsp], rax\n" fputs
+end
+
+fn asm_exit FileDesc -> FileDesc do
+
+    "exit:\n" fputs
+    "    mov rax, 60\n" fputs
+    "    mov rdi, 0\n" fputs
+    "    syscall\n" fputs
+    "\n" fputs
+    "segment .data\n" fputs
+    "segment .bss\n" fputs
+    "    ret_stack_rsp: resq 1\n" fputs
+    "    ret_stack: resb 8192\n" fputs
+    "    ret_stack_end:\n" fputs
+end
+
+fn compile_program Str do
+    push 
+    S_IWUSR S_IRUSR or
+    S_IWGRP or 
+    S_IRGRP or
+    S_IROTH or
+
+    O_WRONLY O_CREAT or O_TRUNC or
+    pop
+    fopen 
+    asm_header push
+    0 while dup ProgramSize @64 < do
+        dup pop "op_" fputs swap fputd ": " fputs push
+        dup Program.Index
+        split
+        if dup OpType.PUSH_UINT == do
+            pop 
+            ";; --- " fputs OpType.fPrint " " fputs swap TokenValue.Int dup push fputd " --- \n" fputs
+            "    push    " fputs pop fputd "\n" fputs
+            push
+            drop
+        else dup OpType.INTRINSIC == do
+            
+            // Token Intrinsic OpType  
+
+            swap TokenValue.Int
+            if dup Intrinsic.ADD == do
+                swap
+                pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    pop     rbx\n" fputs
+                "    add     rax, rbx\n" fputs
+                "    push    rax\n" fputs
+                push
+                drop
+            
+            else dup Intrinsic.PUTU == do
+                swap
+                pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rdi\n" fputs
+                "    call    putu\n" fputs
+                push
+                drop
+            else
+                push drop drop pop 
+                "Unhandled Intrincsic: " puts Intrinsic.Print "\n" puts
+                1 exit
+            end
+
+        else
+            drop drop
+            "Unhandled Operation: " swap false compiler_error
+        end
+        1 + 
+    end drop
+    pop 
+    asm_exit
+    fclose
+
+end
+
 fn main do 
 
-    "tlp.tlp" tokenize_file
+    "temp.tlp" tokenize_file
     Tokens.Reverse
+    Program.Init
 
-    while Tokens.Size 0 > do 
-        Tokens.Pop Token.Print
-    end
+    Keyword.IF parse_tokens_until_keywords drop
+
+    "generated.asm" compile_program
 
 end
 

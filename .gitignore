@@ -1,7 +1,5 @@
 __pycache__
 output
-output.asm
-output.o
-tlp_gen.o
-tlp_gen.asm
+*.asm
+*.o
 exe
