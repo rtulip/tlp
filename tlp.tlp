@@ -1,348 +1,77 @@
 use "std.tlp"
+use "lexer.tlp"
 
-const STATBUF_SIZE_OFFSET 48 end
-const FILE_BUFFER_SIZE 1000000 end
-const ASCII_0 48 end
-const ASCII_9 ASCII_0 9 + end
+const OpType.PUSH_UINT      0                       end
+const OpType.PUSH_BOOL      OpType.PUSH_UINT 1 +    end
+const OpType.PUSH_PTR       OpType.PUSH_BOOL 1 +    end
+const OpType.PUSH_STRING    OpType.PUSH_PTR 1 +     end
+const OpType.INTRINSIC      OpType.PUSH_STRING 1 +  end
+const OpType.JUMP_COND      OpType.INTRINSIC 1 +    end
+const OpType.JUMP           OpType.JUMP_COND 1 +    end
+const OpType.RETURN         OpType.JUMP 1 +         end
+const OpType.CALL           OpType.RETURN 1 +       end
+const OpType.NOP            OpType.CALL 1 +         end
 
-reserve statbuf 144 end
-reserve file_buffer FILE_BUFFER_SIZE end
-
-fn statbuf.size ptr -> int do
-    as int STATBUF_SIZE_OFFSET + as ptr @64
+const SizeOf(Op) SizeOf(int) SizeOf(Token) SizeOf(TokenValue) + + end
+struct Op
+    int        // OpType
+    Token      // token
+    TokenValue // Operand
 end
 
-fn load_file_to_str Str -> Str do
-    dup 
-    statbuf swap stat
+fn !Op Op ptr -> ptr do
+    push split pop
+    !TokenValue !Token !int
+end
 
-    if statbuf statbuf.size FILE_BUFFER_SIZE > do 
-        "File too big to read.\n" eputs
-        1 exit
-    end
+fn @Op ptr -> Op ptr do
+    @int @Token @TokenValue
+    push cast(Op) pop
+end
 
-    O_RDONLY swap 0 swap fopen dup
-    statbuf statbuf.size swap
-    file_buffer swap
-    
-    if sys_read do
-        drop
-        fclose
+const ProgramCap 10000 end
+reserve ProgramData ProgramCap SizeOf(Op) * end
+reserve ProgramSize SizeOf(int) end
+reserve ProgramPtr  SizeOf(ptr) end
+
+fn Program.Init do
+    ProgramData ProgramPtr !64
+    0 ProgramSize !64
+end
+
+fn Program.Push Op do
+    ProgramPtr @64 cast(ptr) !Op ProgramPtr !64
+    ProgramSize @64 1 + ProgramSize !64
+end
+
+fn Program.Pop -> Token do
+    ProgramPtr @64 SizeOf(ptr) - cast(ptr)
+    @Token ProgramPtr !64
+    ProgramSize @64 1 - ProgramSize !64
+end
+
+fn Program.Index int -> Op do
+    if dup ProgramSize @64 < do
+        1 + SizeOf(Op) *
+        ProgramData swap ptr_offset 
+        cast(int) SizeOf(int) - cast(ptr)
+        @Op drop
     else
-        "Failed to read from file\n" eputs
-        drop
-        fclose 
+        "[ERROR] Index " eputs eputd " is out of range for Program[]\n" eputs
         1 exit
+        NULL @Op drop
     end
-    
-    statbuf statbuf.size file_buffer as Str
-
-end 
-
-fn char_at Str int -> int do
-
-    // TODO: Check bounds
-    swap Str.Data as int swap + as ptr @8 
-
-end 
-
-fn str_shift_right_by Str int -> Str do
-
-    // TODO: Check bounds
-    2 group
-
-    dup split swap
-    Str.Data as int swap + as ptr
-    swap 
-
-    split swap
-    Str.Size swap -
-    swap
-
-    as Str
-
-end 
-
-fn str_len_diff Str Str -> int do 
-    // len(S1) - len(S2)
-    2 group dup
-    group.0 Str.Size swap
-    group.1 Str.Size - 
-end 
-
-fn chop_word_left Str -> Str Str do
-    dup 
-    while 
-        if dup Str.Size 0 > do 
-            if dup 0 char_at 32 == do
-                1 str_shift_right_by 
-                false
-            else dup 0 char_at 10 == do
-                1 str_shift_right_by 
-                false
-            else
-                true
-            end 
-
-        else
-            false
-        end 
-    do 
-        1 str_shift_right_by 
-    end
-
-    // [S1 S2] S1_New 
-    2 group dup 
-    dup split str_len_diff  swap 
-    group.0 Str.Data as Str
-    swap group.1 swap 
-end 
-
-fn str_trim_trailing_whitespace Str -> Str do 
-    while 
-        if dup Str.Size 0 > do
-            if dup dup Str.Size 1 - char_at 10 == do
-                true
-            else dup dup Str.Size 1 - char_at 32 == do
-                true
-            else 
-                false
-            end 
-        else
-            false
-        end
-    do
-        dup Str.Size 1 - swap Str.Data as Str 
-    end
-end 
-
-fn str_start_is_numeric Str -> bool do
-    if dup Str.Size 0 > do
-        if dup 0 char_at ASCII_0 < do 
-            false
-        else dup 0 char_at ASCII_9 > do
-            false
-        else 
-            true
-        end
-    else 
-        false
-    end
-    swap drop
-end 
-
-fn str_is_numeric Str -> bool do 
-    if dup Str.Size 0 > do
-        true swap
-        // bool Str
-        while dup Str.Size 0 > do 
-
-            dup str_start_is_numeric
-            3 group dup dup
-            group.2 swap group.0 and
-            swap group.1
-
-            1 str_shift_right_by
-        end drop
-    else 
-        drop false
-    end
-end 
-
-struct pair
-    int int 
 end
 
-struct temp
-    pair int 
-end
+fn main do 
 
-fn mul int int -> int do 
-    as pair 0 as temp
-    // T[ P[a b] r] 
-    while dup temp.0 pair.1 0 > do
-        // P[a (b-1)] (r+a) 
-        dup split swap pair.0 + swap
-        temp.0 split 1 - as pair swap as temp
-    end
-    temp.1
-end
+    "tlp.tlp" tokenize_file
+    Tokens.Reverse
 
-fn exp int int -> int do
-    as pair 1 as temp
-    // T[ P[a b] r] 
-    while dup temp.0 pair.1 0 > do
-        // P[a (b-1)] (r+a) 
-        dup split swap pair.0 mul swap
-        temp.0 split 1 - as pair swap as temp
+    while Tokens.Size 0 > do 
+        Tokens.Pop Token.Print
     end
-    temp.1
 
 end
 
-fn str_to_uint Str -> int do 
-    if dup str_is_numeric do 
-        0 swap
-        while dup Str.Size 0 > do 
-
-            // (10^(Str.Size - 1)*int(Str[0]))+result Str 
-            2 group dup dup dup
-            group.1 Str.Size 1 - 10 swap exp swap
-            group.1 0 char_at ASCII_0 - mul swap
-            group.0 + swap
-            group.1 1 str_shift_right_by
-
-        end drop
-        
-    else 
-        eputs "is not numeric!\n" eputs
-        1 exit
-        0
-    end
-
-end 
-
-fn two_dup a b -> a b a b do 
-    2 group dup 
-    group.0 swap dup 
-    group.1 swap dup
-    group.0 swap
-    group.1
-end
-
-fn str_eq Str Str -> bool do
-    
-    if two_dup Str.Size swap Str.Size == do
-        true swap
-
-        // Str1 Bool Str2
-        while dup Str.Size 0 > do
-
-            3 group dup 
-            group.0 1 str_shift_right_by swap
-            dup dup split
-            0 char_at swap
-            drop swap
-            0 char_at == swap
-            group.1 and swap 
-            group.2 1 str_shift_right_by
-
-        end
-
-        drop swap drop
-    else
-        drop drop false
-    end
-
-end 
-
-fn write_to_asm_file Str do
-
-    
-    S_IWUSR S_IRUSR or S_IWGRP or S_IRGRP or S_IROTH or
-    O_WRONLY O_CREAT or O_APPEND or
-    "tlp_gen.asm"
-    fopen
-
-    swap fputs fclose
-
-end 
-
-
-fn asm_header do
-    S_IWUSR S_IRUSR or S_IWGRP or S_IRGRP or S_IROTH or
-    O_WRONLY O_CREAT or O_TRUNC or
-    "tlp_gen.asm"
-    fopen fclose
-    
-    
-    "segment .text\n"                           write_to_asm_file
-    "putu:\n"                                   write_to_asm_file
-    "    mov     r9, -3689348814741910323\n"    write_to_asm_file
-    "    sub     rsp, 40\n"                     write_to_asm_file
-    "    mov     BYTE [rsp+31], 10\n"           write_to_asm_file
-    "    lea     rcx, [rsp+30]\n"               write_to_asm_file
-    ".L2:\n"                                    write_to_asm_file
-    "    mov     rax, rdi\n"                    write_to_asm_file
-    "    lea     r8, [rsp+32]\n"                write_to_asm_file
-    "    mul     r9\n"                          write_to_asm_file
-    "    mov     rax, rdi\n"                    write_to_asm_file
-    "    sub     r8, rcx\n"                     write_to_asm_file
-    "    shr     rdx, 3\n"                      write_to_asm_file
-    "    lea     rsi, [rdx+rdx*4]\n"            write_to_asm_file
-    "    add     rsi, rsi\n"                    write_to_asm_file
-    "    sub     rax, rsi\n"                    write_to_asm_file
-    "    add     eax, 48\n"                     write_to_asm_file
-    "    mov     BYTE [rcx], al\n"              write_to_asm_file
-    "    mov     rax, rdi\n"                    write_to_asm_file
-    "    mov     rdi, rdx\n"                    write_to_asm_file
-    "    mov     rdx, rcx\n"                    write_to_asm_file
-    "    sub     rcx, 1\n"                      write_to_asm_file
-    "    cmp     rax, 9\n"                      write_to_asm_file
-    "    ja      .L2\n"                         write_to_asm_file
-    "    lea     rax, [rsp+32]\n"               write_to_asm_file
-    "    mov     edi, 1\n"                      write_to_asm_file
-    "    sub     rdx, rax\n"                    write_to_asm_file
-    "    xor     eax, eax\n"                    write_to_asm_file
-    "    lea     rsi, [rsp+32+rdx]\n"           write_to_asm_file
-    "    mov     rdx, r8\n"                     write_to_asm_file
-    "    mov     rax, 1\n"                      write_to_asm_file
-    "    syscall\n"                             write_to_asm_file
-    "    add     rsp, 40\n"                     write_to_asm_file
-    "    ret\n"                                 write_to_asm_file
-    "global _start\n"                           write_to_asm_file
-    "_start:\n"                                 write_to_asm_file
-    "    mov rax, ret_stack_end\n"              write_to_asm_file
-    "    mov [ret_stack_rsp], rax\n"            write_to_asm_file
-end
-
-fn asm_footer do
-    "exit:\n"                       write_to_asm_file
-    "    mov rax, 60\n"             write_to_asm_file
-    "    mov rdi, 0\n"              write_to_asm_file
-    "    syscall\n"                 write_to_asm_file
-    "\n"                            write_to_asm_file
-    "segment .data\n"               write_to_asm_file
-    "segment .bss\n"                write_to_asm_file
-    "    ret_stack_rsp: resq 1\n"   write_to_asm_file
-    "    ret_stack: resb 8192\n"    write_to_asm_file
-    "    ret_stack_end:\n"          write_to_asm_file
-
-end
-
-fn compile_program Str do
-
-    asm_header
-
-    load_file_to_str
-    while dup Str.Size 0 > do 
-        chop_word_left str_trim_trailing_whitespace
-        // Str Word
-        if dup str_is_numeric do 
-            ";; --- PUSH_UINT --- \n"   write_to_asm_file 
-            "    push    "              write_to_asm_file
-                                        write_to_asm_file
-            "\n"                        write_to_asm_file 
-        else dup "putu" str_eq do
-            ";; --- PUTU --- \n"        write_to_asm_file
-            "    pop     rdi\n"         write_to_asm_file
-            "    call    putu\n"        write_to_asm_file
-            drop
-        else dup "+" str_eq do
-            ";; --- ADD --- \n"         write_to_asm_file
-            "    pop     rax\n"         write_to_asm_file
-            "    pop     rbx\n"         write_to_asm_file
-            "    add     rax, rbx\n"    write_to_asm_file
-            "    push    rax\n"         write_to_asm_file
-            drop
-        else
-            drop
-        end
-        
-    end drop
-
-    asm_footer
-
-end 
-
-"examples/sample.tlp" compile_program
+main

@@ -9,18 +9,6 @@ struct Loc
     Str // file
 end
 
-fn Loc.column Loc -> int do
-    Loc.0
-end
-
-fn Loc.line Loc -> int do
-    Loc.1
-end
-
-fn Loc.file Loc -> Str do
-    Loc.2
-end
-
 fn Loc.AddToColumn Loc int -> Loc do
     
     push split pop
@@ -130,104 +118,146 @@ fn Token.Default -> Token do
 end
 
 const SizeOf(Token) SizeOf(Loc) SizeOf(TokenValue) SizeOf(int) + + end
-const TokenListCap 100000 end
-reserve TokenListData TokenListCap SizeOf(Token) * end
-reserve TokenListSize SizeOf(int) end
-reserve TokenListPtr  SizeOf(ptr) end
+const TokensCap 100000 end
+reserve TokensData TokensCap SizeOf(Token) * end
+reserve TokensSize SizeOf(int) end
+reserve TokensPtr  SizeOf(ptr) end
 
-fn TokenList.Init do
+fn Tokens.Init do
 
-    TokenListData TokenListPtr !64
-    0 TokenListSize !64
+    TokensData TokensPtr !64
+    0 TokensSize !64
 
 end
 
-fn TokenList.Push Token do
-
-    TokenListPtr @64 push
-    split
-
-    pop dup SizeOf(int) + push cast(ptr) !64  // Token.Type
-    split
-    pop dup SizeOf(int) + push cast(ptr) !64  // Token.TokenValue.Kind
-    split
-    pop dup SizeOf(int) + push cast(ptr) !64  // Token.TokenValue.Str.Data
-    pop dup SizeOf(int) + push cast(ptr) !64  // Token.TokenValue.Str.Size
-    pop dup SizeOf(int) + push cast(ptr) !64  // Token.TokenValue.int
-    split split
-    pop dup SizeOf(int) + push cast(ptr) !64  // Token.Loc.File.Data
-    pop dup SizeOf(int) + push cast(ptr) !64  // Token.Loc.File.Size
-    pop dup SizeOf(int) + push cast(ptr) !64  // Token.Loc.Line
-    pop dup SizeOf(int) + push cast(ptr) !64  // Token.Loc.Column
-
-    pop TokenListPtr !64
-    TokenListSize @64 1 + TokenListSize !64
+fn !int int ptr -> ptr do
+    dup SizeOf(int) ptr_offset push !64 pop
 end
 
-fn TokenList.Pop -> Token do
-
-    TokenListPtr @64 SizeOf(int) - push
-    pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.Column
-    pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.Line
-    pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.File.Size
-    pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.File.Data
-    cast(ptr) cast(Str) cast(Loc)
-    pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.int
-    pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.Str.Size
-    pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.Str.Data
-    cast(ptr) cast(Str)
-    pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.Kind
-    cast(TokenValue)
-    pop dup push cast(ptr) @64 // Token.Type
-    cast(Token)
-
-    pop TokenListPtr !64
-    TokenListSize @64 1 - TokenListSize !64
+fn @int ptr -> int ptr do
+    // ptr ptr(int-S(int))
+    dup cast(int) SizeOf(int) - cast(ptr) push @64
+    pop
 end
 
-fn TokenList.Index int -> Token do
+fn !ptr ptr ptr -> ptr do
+    dup SizeOf(ptr) ptr_offset push !64 pop
+end
 
-    if dup TokenListSize @64 < do 
+fn @ptr ptr -> ptr ptr do
+    dup cast(int) SizeOf(ptr) - cast(ptr) push @64 cast(ptr)
+    pop
+end
 
+fn !Str Str ptr -> ptr do
+    push split pop
+    !ptr !int
+end
+
+fn @Str ptr -> Str ptr do
+    @int @ptr 
+    push cast(Str) pop
+end
+
+fn !Loc Loc ptr -> ptr do
+    push split pop
+    !Str !int !int
+end
+
+fn @Loc ptr -> Loc ptr do
+    @int @int @Str
+    push cast(Loc) pop
+end
+
+fn !TokenValue TokenValue ptr -> ptr do
+    push split pop
+    !int !Str !int
+end
+
+fn @TokenValue ptr -> TokenValue ptr do
+    @int @Str @int
+    push cast(TokenValue) pop
+end
+
+fn !Token Token ptr -> ptr do
+    push split pop
+    !int !TokenValue !Loc
+end
+
+fn @Token ptr -> Token ptr do
+    @Loc @TokenValue @int
+    push cast(Token) pop
+end
+
+fn Tokens.Push Token do
+
+    TokensPtr @64 cast(ptr) !Token TokensPtr !64
+    TokensSize @64 1 + TokensSize !64
+end
+
+fn Tokens.Pop -> Token do
+    TokensPtr @64 SizeOf(ptr) - cast(ptr)
+    @Token cast(int) SizeOf(ptr) + TokensPtr !64
+    TokensSize @64 1 - TokensSize !64
+end
+
+fn Tokens.Index int -> Token do
+
+    if dup TokensSize @64 < do
         1 + SizeOf(Token) *
-        TokenListData swap
-        ptr_offset cast(int) SizeOf(int) -  push
-
-        pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.Column
-        pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.Line
-        pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.File.Size
-        pop dup SizeOf(int) - push cast(ptr) @64 // Token.Loc.File.Data
-        cast(ptr) cast(Str) cast(Loc)
-        pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.int
-        pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.Str.Size
-        pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.Str.Data
-        cast(ptr) cast(Str)
-        pop dup SizeOf(int) - push cast(ptr) @64 // Token.TokenValue.Kind
-        cast(TokenValue)
-        pop cast(ptr) @64 // Token.Type
-        cast(Token)
+        TokensData swap
+        ptr_offset cast(int) SizeOf(int) - cast(ptr)
+        @Token drop
     else
-        drop 
+        "[ERROR] Index " eputs eputd " is out of range for Tokens[]\n" eputs
         Token.Default
+        1 exit
     end
 end
 
-fn TokenList.Size -> int do
-    TokenListSize @64 
+fn Tokens.Size -> int do
+    TokensSize @64 
 end
 
-const Token.Type.Keyword    0 end
-const Keyword.IF            0 end
-const Keyword.DO            1 end
-const Keyword.ELSE          2 end
-const Keyword.END           3 end
-const Keyword.WHILE         4 end
-const Keyword.FN            5 end
-const Keyword.STRUCT        6 end
-const Keyword.ARROW         7 end
-const Keyword.INCLUDE       8 end
-const Keyword.CONST         9 end
-const Keyword.RESERVE      10 end
+fn Tokens.Reverse do
+
+    0 Tokens.Size 1 - 
+    while
+        2 group dup split
+        < push split pop
+    do
+        // start
+        // end
+
+        dup push
+        Tokens.Index push
+        dup
+        Tokens.Index
+        pop swap push push
+
+        dup SizeOf(Token) * TokensData swap ptr_offset
+        pop swap !Token drop
+        
+        pop pop dup push
+        SizeOf(Token) * TokensData swap ptr_offset
+        !Token drop
+
+        1 + pop 1 - 
+    end drop drop
+end
+
+const Token.Type.Keyword 0 end
+const Keyword.IF        1                       end
+const Keyword.DO        Keyword.IF 1 <<         end
+const Keyword.ELSE      Keyword.DO 1 <<         end
+const Keyword.END       Keyword.ELSE 1 <<       end
+const Keyword.WHILE     Keyword.END 1 <<        end
+const Keyword.FN        Keyword.WHILE 1 <<      end
+const Keyword.STRUCT    Keyword.FN 1 <<         end
+const Keyword.ARROW     Keyword.STRUCT 1 <<     end
+const Keyword.INCLUDE   Keyword.ARROW 1 <<      end
+const Keyword.CONST     Keyword.INCLUDE 1 <<    end
+const Keyword.RESERVE   Keyword.CONST 1 <<      end
 
 fn Keyword.Print int do
 
@@ -671,7 +701,7 @@ do
         if dup Token.Type INVALID == do
             drop
         else
-            TokenList.Push
+            Tokens.Push
             // Token.Print
         end
         
@@ -686,7 +716,7 @@ end
 
 fn tokenize_file Str do
     
-    TokenList.Init
+    Tokens.Init
 
     dup 
     1 swap 1 swap cast(Loc) swap
@@ -710,10 +740,11 @@ fn tokenize_file Str do
 
 end
 
-"lexer.tlp" tokenize_file
+// "tlp.tlp" tokenize_file
+// Tokens.Reverse
 
-TokenList.Size
-while dup 0 > do
-    1 - 
-    dup TokenList.Index Token.Print
-end drop
+// 0
+// while dup Tokens.Size < do 
+//     dup Tokens.Index Token.Print
+//     1 +
+// end dropf

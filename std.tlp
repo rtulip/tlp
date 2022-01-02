@@ -1,6 +1,10 @@
 use "sys_x86_64_linux.tlp"
 use "libs/str.tlp"
 
+fn NULL -> ptr do
+    0 cast(ptr)
+end
+
 const SizeOf(int)  8 end
 const SizeOf(bool) 8 end
 const SizeOf(ptr)  8 end
@@ -67,6 +71,10 @@ fn stdout -> FileDesc do
     1 cast(FileDesc)
 end
 
+fn stderr -> FileDesc do
+    1 cast(FileDesc)
+end
+
 fn exit int do
     sys_exit
 end
@@ -74,7 +82,6 @@ end
 // Prints a string to stderr.
 // No error handling is done here.
 fn eputs Str do
-    
     split 2 cast(FileDesc) sys_write drop drop
 end     
 
@@ -155,6 +162,9 @@ fn fputd FileDesc int -> FileDesc do
     end
 end
 
+fn eputd int do
+    stderr swap fputd drop
+end
 fn putd int do
 
     stdout swap fputd drop
@@ -290,3 +300,4 @@ fn ptr_offset ptr int -> ptr do
     swap
     cast(int) + cast(ptr)
 end
+

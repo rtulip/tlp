@@ -76,7 +76,10 @@ class Function:
     tok: Token
     start_ip: int
     end_ip: Optional[int]
+    number: int
 
+
+IncludedFiles: List[str] = []
 
 FunctionMeta = Dict[str, Function]
 Program = List[Op]
@@ -565,11 +568,11 @@ def parse_include_statement(start_tok: Token, tokens: List[Token], program: Prog
     )
 
     include_str = include_str_tok.value
-
-    included_tokens = tokenize(include_str)
-    included_tokens.reverse()
-
-    tokens += included_tokens
+    if include_str not in IncludedFiles:
+        included_tokens = tokenize(include_str)
+        included_tokens.reverse()
+        tokens += included_tokens
+        IncludedFiles.append(include_str)
 
 
 def parse_fn_from_tokens(
@@ -687,7 +690,8 @@ def parse_fn_from_tokens(
         signature=signature,
         tok=start_tok,
         start_ip=start_loc,
-        end_ip=None
+        end_ip=None,
+        number=len(fn_meta),
     )
 
     tok_to_end = parse_tokens_until_keywords(
@@ -2097,9 +2101,10 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                     assert isinstance(op.operand, str)
                     assert op.operand in fn_meta.keys()
                     after_fn_def = fn_meta[op.operand].end_ip
+                    fn_number = fn_meta[op.operand].number
                     assert after_fn_def != None
                     out.write(f"jmp op_{after_fn_def}\n")
-                    out.write(f"fn_{op.operand}:\n")
+                    out.write(f"fn_{fn_number}:\n")
                     out.write(f"    mov     [ret_stack_rsp], rsp\n")
                     out.write(f"    mov     rsp, rax\n")
                 else:
@@ -2113,7 +2118,7 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                 out.write(f";; --- {op.op} {op.operand} --- \n")
                 out.write(f"    mov     rax, rsp\n")
                 out.write(f"    mov     rsp, [ret_stack_rsp]\n")
-                out.write(f"    call    fn_{op.operand}\n")
+                out.write(f"    call    fn_{fn_meta[op.operand].number}\n")
                 out.write(f"    mov     [ret_stack_rsp], rsp\n")
                 out.write(f"    mov     rsp, rax\n")
             else:
@@ -2148,6 +2153,8 @@ if __name__ == "__main__":
     # for ip, op in enumerate(program):
     #     print(f"{ip} -- {op.op}: {op.operand} TokenType: {op.tok.typ}")
     # print("-------------------------------------------")
+
+    # print(f"Len Program: {len(program)}")
 
     ip, type_stack, ret_stack = type_check_program(
         program,
