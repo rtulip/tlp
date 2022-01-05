@@ -74,7 +74,7 @@ class Function:
     ident: str
     signature: Signature
     tok: Token
-    start_ip: int
+    start_ip: Optional[int]
     end_ip: Optional[int]
     number: int
     stub: bool
@@ -693,12 +693,15 @@ def parse_fn_from_tokens(
         )
 
         if fn_name in fn_meta.keys():
+
+            original_sig = fn_meta[fn_name].signature
+            assert isinstance(original_sig.puts, list)
             compiler_error(
                 signature == fn_meta[fn_name].signature,
                 start_tok,
                 f"""Function signature for {fn_name} must match pre-declaration.
     [Note]: Initially defined here: {fn_meta[fn_name].tok.loc}
-    [Note]: Expected Signature: {pretty_print_arg_list(fn_meta[fn_name].signature.pops)} -> {pretty_print_arg_list(fn_meta[fn_name].signature.puts)}
+    [Note]: Expected Signature: {pretty_print_arg_list(original_sig.pops)} -> {pretty_print_arg_list(original_sig.puts)}
     [Note]: Found Signature: {pretty_print_arg_list(signature.pops)} -> {pretty_print_arg_list(signature.puts)}"""
             )
 
@@ -1638,6 +1641,7 @@ def type_check_program(
 
     if not skip_fn_eval:
         for fn in fn_meta.values():
+            assert fn.start_ip is not None
             end_ip, out_stack, out_ret_stack = type_check_program(
                 program,
                 fn_meta,
@@ -2169,6 +2173,7 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                 out.write(f"    mov     rsp, [ret_stack_rsp]\n")
                 out.write(f"    ret\n")
             elif op.op == OpType.CALL:
+                assert isinstance(op.operand, str)
                 out.write(f";; --- {op.op} {op.operand} --- \n")
                 out.write(f"    mov     rax, rsp\n")
                 out.write(f"    mov     rsp, [ret_stack_rsp]\n")

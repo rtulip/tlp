@@ -3,25 +3,25 @@ use "std.tlp"
 "15 + 14: " puts 15 14 + putu
 "10 + 5: " puts 10 5 - putu
 
-"0 == 0: " puts 0 0 == putb
-"0 == 1: " puts 0 1 == putb
-"1 == 0: " puts 1 0 == putb
+"0 == 0: " puts 0 0 == putb "\n" puts
+"0 == 1: " puts 0 1 == putb "\n" puts
+"1 == 0: " puts 1 0 == putb "\n" puts
 
-"2 == 2: " puts 2 2 == putb 
+"2 == 2: " puts 2 2 == putb "\n" puts
 
-"0 <= 1: " puts 0 1 <= putb
-"1 <= 1: " puts 1 1 <= putb
-"2 <= 1: " puts 2 1 <= putb
+"0 <= 1: " puts 0 1 <= putb "\n" puts
+"1 <= 1: " puts 1 1 <= putb "\n" puts
+"2 <= 1: " puts 2 1 <= putb "\n" puts
 
 "1 << 5: " puts 1 5 << putu
 
-"0 < 1: " puts 0 1 < putb
-"1 < 1: " puts 1 1 < putb
-"2 < 1: " puts 2 1 < putb
+"0 < 1: " puts 0 1 < putb "\n" puts
+"1 < 1: " puts 1 1 < putb "\n" puts
+"2 < 1: " puts 2 1 < putb "\n" puts
 
-"0 > 1: " puts 0 1 > putb
-"1 > 1: " puts 1 1 > putb
-"2 > 1: " puts 2 1 > putb
+"0 > 1: " puts 0 1 > putb "\n" puts
+"1 > 1: " puts 1 1 > putb "\n" puts
+"2 > 1: " puts 2 1 > putb "\n" puts
 
 "2 | 4: " puts 2 4 or putu
 
