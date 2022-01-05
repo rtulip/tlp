@@ -24,9 +24,22 @@ fn Loc.IncrementLine Loc -> Loc do
     
 end
 
+fn Loc.fPrint Loc FileDesc do 
+    push split pop
+    swap fputs 
+    ":" fputs 
+    swap fputd 
+    ":" fputs
+    swap fputd
+    drop
+end
+
 fn Loc.Print Loc do
-    split
-    puts ":" puts putd ":" puts putd
+    stdout Loc.fPrint
+end
+
+fn Loc.ePrint Loc do
+    stderr Loc.fPrint
 end
 
 const TokenValue.IntKind  0                       end
@@ -266,34 +279,44 @@ const Keyword.INCLUDE   Keyword.ARROW 1 <<      end
 const Keyword.CONST     Keyword.INCLUDE 1 <<    end
 const Keyword.RESERVE   Keyword.CONST 1 <<      end
 
-fn Keyword.Print int do
-
+fn Keyword.fPrint int FileDesc do
+    push
     if   dup Keyword.IF == do
-        "IF" puts
+        "IF"
     else dup Keyword.DO == do
-        "DO" puts
+        "DO"
     else dup Keyword.ELSE == do
-        "ELSE" puts
+        "ELSE"
     else dup Keyword.END == do
-        "END" puts
+        "END"
     else dup Keyword.WHILE == do
-        "WHILE" puts
+        "WHILE"
     else dup Keyword.FN == do
-        "FN" puts
+        "FN"
     else dup Keyword.STRUCT == do
-        "STRUCT" puts
+        "STRUCT"
     else dup Keyword.ARROW == do
-        "ARROW" puts
+        "ARROW"
     else dup Keyword.INCLUDE == do
-        "INCLUDE" puts
+        "INCLUDE"
     else dup Keyword.CONST == do
-        "CONST" puts
+        "CONST"
     else dup Keyword.RESERVE == do
-        "RESERVE" puts
+        "RESERVE"
     else
-        "INVALID" puts
+        "INVALID"
     end
-    drop
+
+    pop swap fputs
+    drop drop
+end
+
+fn Keyword.Print int do
+    stdout Keyword.fPrint
+end
+
+fn Keyword.ePrint int do
+    stderr Keyword.fPrint
 end
 
 const Token.Type.Intrinsic  1                           end
@@ -332,6 +355,9 @@ const Intrinsic.SYSCALL5    Intrinsic.SYSCALL4 1 +      end
 const Intrinsic.SYSCALL6    Intrinsic.SYSCALL5 1 +      end
 
 fn Intrinsic.fPrint FileDesc int -> FileDesc do
+    
+    swap "Intrinsic." fputs swap 
+
     if dup Intrinsic.ADD == do
         "ADD" 
     else dup Intrinsic.SUB == do

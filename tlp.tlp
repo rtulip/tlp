@@ -1,6 +1,33 @@
 use "std.tlp"
 use "lexer.tlp"
 
+fn || bool bool -> bool do
+    if do
+      drop true
+    else
+        if do
+            true
+        else
+            false
+        end
+    end  
+end
+
+fn Token.IsKeyword Token int -> bool do
+    push
+    if split Token.Type.Keyword == do 
+        TokenValue.Int pop 
+        if == do
+            drop true
+        else
+            drop false
+        end
+    else
+        pop drop
+        drop drop false
+    end
+end
+
 const OpType.PUSH_UINT      0                       end
 const OpType.PUSH_BOOL      OpType.PUSH_UINT 1 +    end
 const OpType.PUSH_PTR       OpType.PUSH_BOOL 1 +    end
@@ -40,12 +67,24 @@ fn OpType.fPrint int FileDesc  -> FileDesc do
 
 end
 
+fn OpType.Print int do
+    stdout OpType.fPrint drop
+end
+
+fn OpType.ePrint int do
+    stderr OpType.fPrint drop
+end
+
 const SizeOf(Op) SizeOf(int) SizeOf(Token) SizeOf(TokenValue) + + end
 struct Op
     Token      // token
     TokenValue // Operand
     int        // OpType
 end
+
+fn Op.Token Op -> Token do
+    Op.0
+end 
 
 fn !Op Op ptr -> ptr do
     push split pop
@@ -91,57 +130,275 @@ fn Program.Index int -> Op do
     end
 end
 
+fn Program.Update Op int do
+    SizeOf(Op) *
+    ProgramData swap ptr_offset
+    !Op drop
+end
+
+fn Program.UpdateOperand TokenValue int do
+    // Tok TV Typ 
+    dup push
+    swap push
+    Program.Index split
+    push drop
+    
+    pop pop swap 
+    cast(Op)
+
+    pop Program.Update
+end
+
 fn compiler_error Str Token bool do
     if not do
-        Token.ePrint " [ERROR]: " eputs eputs "\n" eputs
+        Token.Loc Loc.ePrint " [ERROR]: " eputs eputs "\n" eputs
         1 exit
-    else drop drop
-    end
+    else drop drop end
 end
+
+fn parse_tokens_until_keywords int -> Token end
+
+fn _if_block_assign_jump_dest int Token do
+    push
+    if dup INVALID == not do
+        dup Program.Index
+        Op.Token 
+        if dup Keyword.DO Token.IsKeyword 
+            pop dup push Keyword.ELSE Token.IsKeyword and 
+        do
+            drop
+            ProgramSize @64 1 + TokenValue.FromInt swap
+            Program.UpdateOperand
+        else 
+            dup Keyword.ELSE Token.IsKeyword
+            pop dup push Keyword.ELSE Token.IsKeyword and 
+        do
+            drop
+            ProgramSize @64 TokenValue.FromInt swap
+            Program.UpdateOperand
+            
+        else pop dup push Keyword.END Token.IsKeyword do
+            drop
+            ProgramSize @64 TokenValue.FromInt swap
+            Program.UpdateOperand
+        else
+            drop drop
+            "Unreachable..." 
+            pop dup push
+            false
+            compiler_error
+        end
+    else
+        drop
+    end
+    pop drop
+end
+
+fn parse_if_block_from_tokens Token do
+
+    // Make sure that it's an `IF` token. 
+    if dup Token.Value TokenValue.Int Keyword.IF == not do
+        "Expected keyword `IF`. Found: " eputs
+        dup Token.Value TokenValue.Int Keyword.ePrint
+        "\n" eputs
+        1 exit
+    end
+
+    INVALID TokenValue.FromInt OpType.NOP cast(Op) Program.Push
+    
+    Keyword.DO parse_tokens_until_keywords dup push
+
+    "Expected Token, but found end of file instead" swap 
+    pop dup push Token.Type INVALID == not
+    compiler_error 
+
+    "Expected Keyword `DO` after `IF`" 
+    pop dup push
+    pop dup push Token.Type Token.Type.Keyword ==
+    pop dup push Token.Value TokenValue.Int Keyword.DO == and
+    compiler_error 
+
+    "Unclosed `IF` block. Expected `END` after `DO`"
+    pop dup push
+    Tokens.Size 0 >
+    compiler_error
+
+    pop
+    INVALID TokenValue.FromInt
+    OpType.JUMP_COND
+    cast(Op)
+    Program.Push
+    
+    // Setup the loop.
+    // Stack: [jumps bool] 
+    INVALID ProgramSize @64 1 - true 
+    while Tokens.Size 0 > and dup do
+        drop
+        Keyword.ELSE Keyword.END or
+        parse_tokens_until_keywords dup push
+        
+        "Expected Token, but found end of file instead" swap 
+        pop dup push Token.Type INVALID == not
+        compiler_error
+        
+        pop dup push _if_block_assign_jump_dest
+        pop dup push _if_block_assign_jump_dest
+
+        INVALID
+        if pop dup push Keyword.ELSE Token.IsKeyword do
+            
+            pop dup push
+            INVALID TokenValue.FromInt
+            OpType.JUMP
+            cast(Op)
+            Program.Push
+
+            ProgramSize @64 1 -
+
+            // [INVALID Len(Program)]
+
+            Keyword.DO Keyword.END or
+            parse_tokens_until_keywords
+
+            "Expected Keyword `DO` or `END` after `ELSE`, but found end of file instead."
+            pop dup push
+            pop Token.Type INVALID == not
+            compiler_error
+            
+            // [INVALID len(Program) tok_next]
+
+            dup
+            "Expected Keyword `DO` or `END` after `ELSE`" swap
+            dup dup
+            Keyword.DO Token.IsKeyword swap
+            Keyword.END Token.IsKeyword ||
+            compiler_error
+
+            // If Do, add it to the jump stack and continue
+            if dup Keyword.DO Token.IsKeyword do
+                push push drop ProgramSize @64 pop pop
+                
+                INVALID TokenValue.FromInt
+                OpType.JUMP_COND
+                cast(Op)
+                Program.Push
+                true
+
+            // If end, cleanup and exit
+            else dup Keyword.END Token.IsKeyword do
+                // [INVALID idx tok_next]
+                push
+ 
+                ProgramSize @64 TokenValue.FromInt swap
+                Program.UpdateOperand
+                
+                // [INVALID tok_next]
+                pop
+                ProgramSize @64 1 + TokenValue.FromInt
+                OpType.JUMP
+                cast(Op) Program.Push
+                
+                INVALID
+                false
+            else
+                "Unreachable...\n" eputs
+                1 exit
+                drop false
+            end
+
+        else pop dup push Keyword.END Token.IsKeyword do
+            "shouldnt be here... \n" puts
+            pop
+            ProgramSize @64 1 + TokenValue.FromInt
+            OpType.JUMP
+            cast(Op) Program.Push
+
+            INVALID
+            false
+        else
+            pop drop
+            "Unreachable...\n" eputs 
+            1 exit
+            INVALID
+            false
+        end
+
+    end drop drop
+    drop 
+
+    
+end  
 
 fn parse_tokens_until_keywords int -> Token do
 
-    drop
+    1 1 "" cast(Loc)
+    "" TokenValue.FromStr
+    INVALID cast(Token)
+    push push
 
-    while Tokens.Size 0 > do
+    true
+
+    while Tokens.Size 0 > and dup do
+        drop
         Tokens.Pop 
         dup Token.Type
+        
+        
         if   dup Token.Type.INT == do
-            drop dup 
+            drop dup   
             Token.Value OpType.PUSH_UINT cast(Op) Program.Push
+            true
         else dup Token.Type.STR == do
             drop dup
             Token.Value OpType.PUSH_STRING cast(Op) Program.Push
+            true
         else dup Token.Type.BOOL == do
             drop dup
             Token.Value OpType.PUSH_BOOL cast(Op) Program.Push
+            true
         else dup Token.Type.WORD == do
             drop
             "Word Tokens aren't handled yet." swap false compiler_error
+            true
         else dup Token.Type.Intrinsic == do
             drop
             dup Token.Value TokenValue.Int 
             if dup Intrinsic.CAST_TUPLE == do
-                drop "CAST_TUPLE isn't implemented yet" swap false compiler_error
+                drop "CAST_TUPLE isn't implemented yet\n" swap false compiler_error
             else
                 drop dup Token.Value
                 OpType.INTRINSIC cast(Op) Program.Push 
             end
 
+            true
+
         else dup Token.Type.Keyword == do
             drop 
-            "Keyword Tokens aren't handled yet." swap false compiler_error
+            dup Token.Value TokenValue.Int
+            if dup Keyword.IF == do
+                drop parse_if_block_from_tokens
+                true
+            else pop dup push & dup 0 > do
+            
+                drop pop pop drop swap push push
+                false
+            else
+                push Token.ePrint pop " -- Unexpected Keyword\n" eputs
+                1 exit drop
+                false
+            end
         else
             // Invalid
             drop
             "Unhandled Token" swap false compiler_error
+            1 exit
+            true
         end
 
-    end
+    end drop
 
-    1 1 "" cast(Loc)
-    "" TokenValue.FromStr
-    INVALID cast(Token)
+    pop drop
+    pop
 
 end
 
@@ -221,6 +478,20 @@ fn compile_program Str do
             "    push    " fputs pop fputd "\n" fputs
             push
             drop
+        else dup OpType.PUSH_BOOL == do
+            pop 
+            ";; --- " fputs OpType.fPrint " " fputs swap TokenValue.Bool dup push fputb " --- \n" fputs
+            "    push    " fputs pop cast(int) fputd "\n" fputs
+            push
+            drop
+        else dup OpType.PUSH_PTR == do
+            drop drop drop
+            "OpType.PUSH_PTR isn't implemented yet\n" eputs
+            1 exit
+        else dup OpType.PUSH_STRING == do
+            drop drop drop
+            "OpType.PUSH_STRING isn't implemented yet\n" eputs
+            1 exit
         else dup OpType.INTRINSIC == do
             
             // Token Intrinsic OpType  
@@ -250,13 +521,65 @@ fn compile_program Str do
                 "Unhandled Intrincsic: " puts Intrinsic.Print "\n" puts
                 1 exit
             end
+        else dup OpType.JUMP_COND == do
+            pop 
+            ";; --- " fputs OpType.fPrint " " fputs swap TokenValue.Int dup push fputd " --- \n" fputs
+            "    pop     rax\n" fputs
+            "    test    rax, rax\n" fputs
+            "    jz      op_" fputs pop fputd "\n" fputs
+            push
+            drop
+        else dup OpType.JUMP == do
+            // ip [Token TokenValue OpType]
+            // bool FD 
+            cast(Op) push
+            dup 1 + pop dup push
+            Op.1 TokenValue.Int == not
+            pop swap
+            pop swap 
+            push push
+            split
+            pop ";; --- " fputs OpType.fPrint " " fputs swap TokenValue.Int dup push fputd " --- \n" fputs
+            pop swap
+            if pop do
+                "    jmp     op_" fputs swap fputd "\n" fputs
+                push
+            else
+                push
+                drop
+            end
+            drop
+            
+        else dup OpType.NOP == do
+        
+            drop push
 
+            if dup Keyword.FN Token.IsKeyword do
+                "Functions aren't implemented yet\n" eputs
+                pop drop drop
+                1 exit
+            else
+                pop drop drop
+                pop "\n" fputs push
+            end
+        else dup OpType.RETURN == do
+            drop drop drop
+            "OpType.RETURN isn't implemented yet\n" eputs
+            1 exit
+        else dup OpType.CALL == do
+            drop drop drop
+            "OpType.CALL isn't implemented yet\n" eputs
+            1 exit
+        
         else
+            "Operation not supported yet: " eputs OpType.ePrint "\n" eputs
             drop drop
-            "Unhandled Operation: " swap false compiler_error
+            1 exit
         end
         1 + 
-    end drop
+    end 
+    dup pop "op_" fputs swap fputd ":\n" fputs push
+    drop
     pop 
     asm_exit
     fclose
@@ -269,7 +592,7 @@ fn main do
     Tokens.Reverse
     Program.Init
 
-    Keyword.IF parse_tokens_until_keywords drop
+    Keyword.FN parse_tokens_until_keywords drop
 
     "generated.asm" compile_program
 

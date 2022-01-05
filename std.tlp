@@ -100,13 +100,6 @@ fn puts Str do
     end
 end
 
-fn putb bool do
-    if do
-        "True\n" puts
-    else
-        "False\n" puts
-    end
-end
 
 // Prints a String to a file.
 // Error handling message is put to stderr
@@ -160,6 +153,19 @@ fn fputd FileDesc int -> FileDesc do
         cast(Str) fputs
 
     end
+end
+
+fn fputb FileDesc bool  -> FileDesc do
+
+    if do
+        "True" fputs
+    else
+        "False" fputs
+    end
+end
+
+fn putb bool do
+    stdout swap fputb drop
 end
 
 fn eputd int do

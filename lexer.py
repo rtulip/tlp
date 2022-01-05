@@ -45,6 +45,7 @@ class Intrinsic(Enum):
     LSL = "<<"
     LT = "<"
     GT = ">"
+    BW_AND = "&"
     READ64 = "@64"
     READ8 = "@8"
     WRITE64 = "!64"

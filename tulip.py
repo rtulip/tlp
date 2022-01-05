@@ -77,6 +77,7 @@ class Function:
     start_ip: int
     end_ip: Optional[int]
     number: int
+    stub: bool
 
 
 IncludedFiles: List[str] = []
@@ -107,6 +108,7 @@ signatures = {
     Intrinsic.EQ: Signature(pops=[INT, INT], puts=[BOOL]),
     Intrinsic.LE: Signature(pops=[INT, INT], puts=[BOOL]),
     Intrinsic.LT: Signature(pops=[INT, INT], puts=[BOOL]),
+    Intrinsic.BW_AND: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.READ64: Signature(pops=[PTR], puts=[INT]),
     Intrinsic.READ8: Signature(pops=[PTR], puts=[INT]),
     Intrinsic.WRITE64: Signature(pops=[A, PTR], puts=[]),
@@ -585,13 +587,8 @@ def parse_fn_from_tokens(
 ):
     signature = Signature(pops=[], puts=[])
     assert isinstance(signature.puts, list)
-    start_loc = len(program)
+
     assert start_tok.typ == Keyword.FN
-    program.append(Op(
-        op=OpType.NOP,
-        operand=None,
-        tok=start_tok
-    ))
 
     compiler_error(
         len(tokens) > 0,
@@ -610,18 +607,17 @@ def parse_fn_from_tokens(
     assert isinstance(name_tok.value, str)
     fn_name = name_tok.value
 
-    check_for_name_conflict(
-        fn_name,
-        name_tok,
-        fn_meta,
-        const_values,
-        reserved_memory,
-    )
-
-    program[start_loc].operand = fn_name
+    if not (fn_name in fn_meta.keys() and fn_meta[fn_name].stub):
+        check_for_name_conflict(
+            fn_name,
+            name_tok,
+            fn_meta,
+            const_values,
+            reserved_memory,
+        )
 
     pops = True
-
+    stub = False
     compiler_error(
         len(tokens) > 0,
         name_tok,
@@ -671,6 +667,9 @@ def parse_fn_from_tokens(
             )
             break
 
+        elif tok.typ == Keyword.END:
+            stub = True
+            break
         else:
             compiler_error(
                 False,
@@ -679,60 +678,109 @@ def parse_fn_from_tokens(
     [Note]: Expected type names, `ARROW` or `DO`."""
             )
 
-    compiler_error(
-        tok.typ == Keyword.DO,
-        tok,
-        "Expected `DO` after function signature. Found end of file instead"
-    )
+    if not stub:
+        start_loc = len(program)
+        program.append(Op(
+            op=OpType.NOP,
+            operand=None,
+            tok=start_tok
+        ))
+        program[start_loc].operand = fn_name
+        compiler_error(
+            tok.typ == Keyword.DO,
+            tok,
+            "Expected `DO` after function signature. Found end of file instead"
+        )
 
-    fn_meta[fn_name] = Function(
-        ident=fn_name,
-        signature=signature,
-        tok=start_tok,
-        start_ip=start_loc,
-        end_ip=None,
-        number=len(fn_meta),
-    )
+        if fn_name in fn_meta.keys():
+            compiler_error(
+                signature == fn_meta[fn_name].signature,
+                start_tok,
+                f"""Function signature for {fn_name} must match pre-declaration.
+    [Note]: Initially defined here: {fn_meta[fn_name].tok.loc}
+    [Note]: Expected Signature: {pretty_print_arg_list(fn_meta[fn_name].signature.pops)} -> {pretty_print_arg_list(fn_meta[fn_name].signature.puts)}
+    [Note]: Found Signature: {pretty_print_arg_list(signature.pops)} -> {pretty_print_arg_list(signature.puts)}"""
+            )
 
-    tok_to_end = parse_tokens_until_keywords(
-        tokens,
-        [Keyword.END],
-        program,
-        fn_meta,
-        const_values,
-        reserved_memory,
-    )
+            fn_meta[fn_name] = Function(
+                ident=fn_name,
+                signature=signature,
+                tok=start_tok,
+                start_ip=start_loc,
+                end_ip=None,
+                number=fn_meta[fn_name].number,
+                stub=False,
+            )
+        else:
 
-    compiler_error(
-        isinstance(tok_to_end, Token),
-        name_tok,
-        "Unclosed Function definition. Expected `END`, but found end of file instead"
-    )
-    assert isinstance(tok_to_end, Token)
+            fn_meta[fn_name] = Function(
+                ident=fn_name,
+                signature=signature,
+                tok=start_tok,
+                start_ip=start_loc,
+                end_ip=None,
+                number=len(fn_meta),
+                stub=False,
+            )
 
-    compiler_error(
-        tok_to_end.typ == Keyword.END,
-        tok_to_end,
-        "Unclosed Function definition. Expected `END`, but found end of file instead"
-    )
+        tok_to_end = parse_tokens_until_keywords(
+            tokens,
+            [Keyword.END],
+            program,
+            fn_meta,
+            const_values,
+            reserved_memory,
+        )
 
-    program.append(Op(
-        op=OpType.RETURN,
-        operand=None,
-        tok=tok_to_end
-    ))
+        compiler_error(
+            isinstance(tok_to_end, Token),
+            name_tok,
+            "Unclosed Function definition. Expected `END`, but found end of file instead"
+        )
+        assert isinstance(tok_to_end, Token)
 
-    program.append(Op(
-        op=OpType.NOP,
-        operand=Keyword.END,
-        tok=tok_to_end
-    ))
+        compiler_error(
+            tok_to_end.typ == Keyword.END,
+            tok_to_end,
+            "Unclosed Function definition. Expected `END`, but found end of file instead"
+        )
 
-    end_ip = len(program)
+        program.append(Op(
+            op=OpType.RETURN,
+            operand=None,
+            tok=tok_to_end
+        ))
 
-    assert fn_name in fn_meta.keys()
-    assert fn_meta[fn_name].end_ip == None
-    fn_meta[fn_name].end_ip = end_ip
+        program.append(Op(
+            op=OpType.NOP,
+            operand=Keyword.END,
+            tok=tok_to_end
+        ))
+
+        end_ip = len(program)
+
+        assert fn_name in fn_meta.keys()
+        assert fn_meta[fn_name].end_ip == None
+        fn_meta[fn_name].end_ip = end_ip
+    else:
+
+        if fn_name in fn_meta.keys():
+            compiler_error(
+                fn_name not in fn_meta.keys(),
+                start_tok,
+                f"""Cannot pre-define a function more than once.
+        [Note]: Functio {fn_name} initially defined here: {fn_meta[fn_name].tok.loc}"""
+            )
+
+        fn_meta[fn_name] = Function(
+            ident=fn_name,
+            signature=signature,
+            tok=start_tok,
+            start_ip=None,
+            end_ip=None,
+            number=len(fn_meta),
+            stub=True,
+        )
 
 
 def generate_accessor_tokens(start_tok: Token, new_struct: DataType, members: ArgList) -> List[Token]:
@@ -1913,6 +1961,12 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                     out.write(f"    pop     rax\n")
                     out.write(f"    pop     rbx\n")
                     out.write(f"    or      rbx, rax\n")
+                    out.write(f"    push    rbx\n")
+                elif op.operand == Intrinsic.BW_AND:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    pop     rbx\n")
+                    out.write(f"    and     rbx, rax\n")
                     out.write(f"    push    rbx\n")
                 elif op.operand == Intrinsic.PUTU:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
