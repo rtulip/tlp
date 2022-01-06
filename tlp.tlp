@@ -86,6 +86,10 @@ fn Op.Token Op -> Token do
     Op.0
 end 
 
+fn Op.Type Op -> int do
+    Op.2
+end
+
 fn !Op Op ptr -> ptr do
     push split pop
     !int !TokenValue !Token 
@@ -329,6 +333,75 @@ fn parse_if_block_from_tokens Token do
     
 end  
 
+fn parse_while_block_from_tokens Token do
+
+    dup
+        dup Token.Value
+        OpType.NOP
+        cast(Op)
+        Program.Push
+
+        dup
+        "Unclosed `WHILE` block. Expected `DO` but found end of file instead\n"
+        swap 
+        Tokens.Size 0 >
+        compiler_error
+    drop
+
+    ProgramSize @64 push
+
+    Keyword.DO parse_tokens_until_keywords 
+        dup push dup 
+        "Expected Token, found end of file instead\n" swap
+        pop Token.Type INVALID == not
+        compiler_error
+        
+        if dup Keyword.DO Token.IsKeyword not  do
+            dup Token.Loc Loc.ePrint " [ERROR]: Expected Keyword `DO`. Found " eputs
+            dup Token.Value TokenValue.Int Keyword.ePrint
+            "\n" eputs
+            1 exit
+        end
+
+        dup
+        "Unclosed `WHILE` block. Expected `END` but found end of file instead." swap
+        Tokens.Size 0 >
+        compiler_error
+
+        ProgramSize @64 swap
+        
+        dup
+        INVALID TokenValue.FromInt
+        OpType.JUMP_COND
+        cast(Op)
+        Program.Push
+    drop
+
+    Keyword.END parse_tokens_until_keywords
+        dup push dup 
+        "Expected Token, found end of file instead\n" swap
+        pop Token.Type INVALID == not
+        compiler_error
+
+        if dup Keyword.END Token.IsKeyword not  do
+            dup Token.Loc Loc.ePrint " [ERROR]: Expected Keyword `END`. Found " eputs
+            dup Token.Value TokenValue.Int Keyword.Print
+            "\n" eputs
+            1 exit
+        end
+
+        dup
+        pop TokenValue.FromInt
+        OpType.JUMP
+        cast(Op)
+        Program.Push
+    drop
+    
+    ProgramSize @64 TokenValue.FromInt swap 
+    Program.UpdateOperand
+
+end
+
 fn parse_tokens_until_keywords int -> Token do
 
     1 1 "" cast(Loc)
@@ -377,6 +450,10 @@ fn parse_tokens_until_keywords int -> Token do
             dup Token.Value TokenValue.Int
             if dup Keyword.IF == do
                 drop parse_if_block_from_tokens
+                true
+            else dup Keyword.WHILE == do
+                drop 
+                parse_while_block_from_tokens
                 true
             else pop dup push & dup 0 > do
             
@@ -583,17 +660,36 @@ fn compile_program Str do
     pop 
     asm_exit
     fclose
+end
 
+fn program_from_tokens do
+
+    Tokens.Reverse
+    Program.Init
+
+    while Tokens.Size 0 > do
+        Keyword.FN Keyword.STRUCT Keyword.CONST or or
+        parse_tokens_until_keywords
+
+        if dup Keyword.FN Token.IsKeyword do
+            "Functions aren't supported yet\n" eputs
+            1 exit 
+        else dup Keyword.STRUCT Token.IsKeyword do
+            "Structs aren't supported yet\n" eputs
+            1 exit
+        else dup Keyword.CONST Token.IsKeyword do
+            "Const expr aren't supported yet\n" eputs
+            1 exit
+        end
+
+        drop
+    end
 end
 
 fn main do 
 
     "temp.tlp" tokenize_file
-    Tokens.Reverse
-    Program.Init
-
-    Keyword.FN parse_tokens_until_keywords drop
-
+    program_from_tokens
     "generated.asm" compile_program
 
 end
