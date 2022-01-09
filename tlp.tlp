@@ -534,6 +534,80 @@ fn asm_exit FileDesc -> FileDesc do
     "    ret_stack_end:\n" fputs
 end
 
+fn op_swap_to_asm 
+    int         // ip
+    int         // m
+    int         // n
+    FileDesc    // out
+    ->
+    FileDesc
+do
+    "    mov     rdi, " fputs
+    push dup pop swap fputd 
+    "\n" fputs
+    
+    // Loop_{ip}
+    swap push swap push
+    "loop_" fputs push dup pop swap fputd ":\n" fputs
+    pop swap pop swap
+
+    "    mov     rbx, rsp\n" fputs
+    "    mov     rcx, rsp\n" fputs
+    "    add     rbx, " fputs push
+    2 group dup dup
+    split + 1 - 8 * pop swap fputd
+    "\n" fputs
+    
+    "    add     rcx, " fputs push
+    split + 2 - 8 * pop swap fputd 
+    "\n" fputs
+
+    "    mov rsi, 0\n" fputs
+    swap push push dup pop
+    // rotate_ip
+    "rotate_" fputs swap fputd ":\n" fputs
+    "    mov     rax, [rbx]\n" fputs
+    "    xchg    rax, [rcx]\n" fputs
+    "    mov     [rbx], rax\n" fputs
+    "    sub     rbx, 8\n" fputs
+    "    sub     rcx, 8\n" fputs
+    "    add     rsi, 1\n" fputs
+    "    cmp     rsi, " fputs
+    pop swap push split + 1 - pop swap fputd "\n" fputs
+    "    jl      rotate_" fputs
+    push dup pop swap fputd "\n" fputs
+    "    sub     rdi, 1\n" fputs
+    "    cmp     rdi, 0\n" fputs
+    "    jg      loop_" fputs swap fputd "\n" fputs 
+end
+
+fn op_ret_stack_push int FileDesc -> FileDesc do
+    push
+    while dup 0 > do
+        pop
+        "    sub     qword [ret_stack_rsp], 8\n" fputs
+        "    pop     rax\n" fputs
+        "    mov     rbx, [ret_stack_rsp]\n" fputs 
+        "    mov     [rbx], rax\n" fputs
+        push
+        1 -
+    end
+    drop pop
+end
+
+fn op_ret_stack_pop int FileDesc -> FileDesc do
+    push
+    while dup 0 > do
+        pop 
+        "    mov     rbx, [ret_stack_rsp]\n" fputs
+        "    mov     rax, [rbx]\n" fputs
+        "    push    rax\n" fputs
+        "    add     qword [ret_stack_rsp], 8\n" fputs
+        push
+        1 -
+    end
+    drop pop
+end
 fn compile_program Str do
     push 
     S_IWUSR S_IRUSR or
@@ -571,28 +645,275 @@ fn compile_program Str do
             1 exit
         else dup OpType.INTRINSIC == do
             
-            // Token Intrinsic OpType  
+            // ip Token Intrinsic OpType  
 
             swap TokenValue.Int
             if dup Intrinsic.ADD == do
-                swap
-                pop 
+                swap pop 
                 ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
                 "    pop     rax\n" fputs
                 "    pop     rbx\n" fputs
                 "    add     rax, rbx\n" fputs
                 "    push    rax\n" fputs
-                push
-                drop
-            
+                push drop
+            else dup Intrinsic.SUB == do
+                swap pop
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    pop     rbx\n" fputs
+                "    sub     rax, rbx\n" fputs
+                "    push    rax\n" fputs
+                push drop
+            else dup Intrinsic.MUL == do
+                swap pop
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rcx\n" fputs
+                "    pop     rax\n" fputs
+                "    mul     rcx\n" fputs
+                "    push    rax\n" fputs
+                push drop
+            else dup Intrinsic.DIV == do
+                swap pop
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    mov     rdx, 0\n" fputs
+                "    pop     rcx\n" fputs
+                "    pop     rax\n" fputs
+                "    div     rcx\n" fputs
+                "    push    rdx\n" fputs
+                push drop
+            else dup Intrinsic.LSL == do
+                swap pop
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rcx\n" fputs
+                "    pop     rbx\n" fputs
+                "    shl     rbx, cl\n" fputs
+                "    push    rbx\n" fputs
+                push drop 
+            else dup Intrinsic.AND == do
+                swap pop
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    pop     rbx\n" fputs
+                "    and     rbx, rax\n" fputs
+                "    push    rbx\n" fputs
+                push drop
+            else dup Intrinsic.OR == do
+                swap pop
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    pop     rbx\n" fputs
+                "    or      rbx, rax\n" fputs
+                "    push    rbx\n" fputs
+                push drop
             else dup Intrinsic.PUTU == do
-                swap
-                pop 
+                swap pop 
                 ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
                 "    pop     rdi\n" fputs
                 "    call    putu\n" fputs
+                push drop
+            else dup Intrinsic.DUP == do
+                swap pop
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    mov     rbx, rsp\n" fputs
+                "    mov     rcx, rsp\n" fputs
+                // TODO: Assing Size to data types in type checking.
+                //  this will probably mean re-evaluating how you do the token struct
+                //  Dup will currently only work with types of size 1.
+                //
+                // push Token.Value TokenValue.Int 1 - 8 * pop
+                push drop pop 
+                "    add     rcx, " fputs 0 fputd "\n" fputs
+                push dup dup pop
+                "loop_" fputs swap fputd ":\n" fputs
+                "    mov     rax, [rcx]\n" fputs
+                "    push    rax\n" fputs
+                "    sub     rcx, 8\n" fputs
+                "    cmp     rbx, rcx\n" fputs
+                "    jle     loop_" fputs swap fputd "\n" fputs
                 push
-                drop
+            else dup Intrinsic.DROP == do
+                // TODO: Support structs with size > 1
+                swap pop
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                push drop
+            else dup Intrinsic.SWAP == do
+                // TODO: Support structs with size > 1 
+                swap pop
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                push drop dup 1 1 pop 
+                op_swap_to_asm push
+            else dup Intrinsic.RPUSH == do
+                // Support structs of size > 1
+                swap pop
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                1 swap op_ret_stack_push
+                push drop
+            else dup Intrinsic.RPOP == do
+                // TODO: Support structs of size > 1
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                1 swap op_ret_stack_pop
+                push drop
+            else dup Intrinsic.SPLIT == do
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                push drop
+            else dup Intrinsic.READ64 == do
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    mov     rax, [rax]\n" fputs 
+                "    push    rax\n" fputs
+                push drop
+            else dup Intrinsic.READ8 == do
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    xor     rbx, rbx\n" fputs
+                "    mov     bl, [rax]\n" fputs
+                "    push    rbx\n" fputs
+                push drop
+            else dup Intrinsic.WRITE64 == do
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    pop     rbx\n" fputs
+                "    mov     [rax], rbx\n" fputs
+                push drop
+            else dup Intrinsic.WRITE8 == do
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    pop     rbx\n" fputs
+                "    mov     [rax], bl\n" fputs
+                push drop
+            else dup Intrinsic.EQ == do
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    mov     rcx, 0\n" fputs
+                "    mov     rdx, 1\n" fputs
+                "    pop     rbx\n" fputs
+                "    pop     rax\n" fputs
+                "    cmp     rax, rbx\n" fputs
+                "    cmove   rcx, rdx\n" fputs
+                "    push    rcx\n" fputs
+                push drop
+            else dup Intrinsic.LE == do
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    mov     rcx, 0\n" fputs
+                "    mov     rdx, 1\n" fputs
+                "    pop     rbx\n" fputs
+                "    pop     rax\n" fputs
+                "    cmp     rax, rbx\n" fputs
+                "    cmovle  rcx, rdx\n" fputs
+                "    push    rcx\n" fputs
+                push drop
+            else dup Intrinsic.LT == do
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    mov     rcx, 0\n" fputs
+                "    mov     rdx, 1\n" fputs
+                "    pop     rbx\n" fputs
+                "    pop     rax\n" fputs
+                "    cmp     rax, rbx\n" fputs
+                "    cmovl   rcx, rdx\n" fputs
+                "    push    rcx\n" fputs
+                push drop
+            else dup Intrinsic.GT == do
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    mov     rcx, 0\n" fputs
+                "    mov     rdx, 1\n" fputs
+                "    pop     rbx\n" fputs
+                "    pop     rax\n" fputs
+                "    cmp     rax, rbx\n" fputs
+                "    cmovg   rcx, rdx\n" fputs
+                "    push    rcx\n" fputs
+                push drop
+            else dup Intrinsic.CAST == do
+                "Cast Intrinsic is not supported yet.\n" eputs
+                1 exit
+                drop drop drop 
+            else dup Intrinsic.CAST_TUPLE == do
+                "Cast Tuple intrinsic is not supported yet.\n" eputs
+                1 exit
+                drop drop drop
+            else dup Intrinsic.INNER_TUPLE == do
+                "Inner Tuple intrinsic is not supported yet.\n" eputs
+                1 exit
+                drop drop drop
+            else dup Intrinsic.SYSCALL0 == do
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    syscall\n" fputs
+                "    push    rax\n" fputs
+                push drop
+            else dup Intrinsic.SYSCALL1 == do
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    pop     rdi\n" fputs
+                "    syscall\n" fputs
+                "    push    rax\n" fputs
+                push drop
+            else dup Intrinsic.SYSCALL2 == do 
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    pop     rdi\n" fputs
+                "    pop     rsi\n" fputs
+                "    syscall\n" fputs
+                "    push    rax\n" fputs
+                push drop
+            else dup Intrinsic.SYSCALL3 == do 
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    pop     rdi\n" fputs
+                "    pop     rsi\n" fputs
+                "    pop     rdx\n" fputs
+                "    syscall\n" fputs
+                "    push    rax\n" fputs
+                push drop
+            else dup Intrinsic.SYSCALL4 == do 
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    pop     rdi\n" fputs
+                "    pop     rsi\n" fputs
+                "    pop     rdx\n" fputs
+                "    pop     r10\n" fputs
+                "    syscall\n" fputs
+                "    push    rax\n" fputs
+                push drop
+            else dup Intrinsic.SYSCALL5 == do 
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    pop     rdi\n" fputs
+                "    pop     rsi\n" fputs
+                "    pop     rdx\n" fputs
+                "    pop     r10\n" fputs
+                "    pop     r8\n" fputs
+                "    syscall\n" fputs
+                "    push    rax\n" fputs
+                push drop
+            else dup Intrinsic.SYSCALL6 == do 
+                swap pop 
+                ";; --- " fputs OpType.fPrint " " fputs swap Intrinsic.fPrint " --- \n" fputs
+                "    pop     rax\n" fputs
+                "    pop     rdi\n" fputs
+                "    pop     rsi\n" fputs
+                "    pop     rdx\n" fputs
+                "    pop     r10\n" fputs
+                "    pop     r8\n" fputs
+                "    pop     r9\n" fputs
+                "    syscall\n" fputs
+                "    push    rax\n" fputs
+                push drop
             else
                 push drop drop pop 
                 "Unhandled Intrincsic: " puts Intrinsic.Print "\n" puts
