@@ -100,6 +100,114 @@ fn @Op ptr -> Op ptr do
     push cast(Op) pop
 end
 
+const IncludeFilesCap 100 end
+reserve IncludeFilesData IncludeFilesCap SizeOf(Str) * end 
+reserve IncludeFilesSize SizeOf(int) end
+reserve IncludeFilesPtr  SizeOf(ptr) end
+
+fn IncludeFiles.Init do
+    IncludeFilesData IncludeFilesPtr !64
+    0 IncludeFilesSize !64
+end
+
+fn IncludeFiles.Push Str do
+    IncludeFilesPtr @64 cast(ptr) !Str IncludeFilesPtr !64
+    IncludeFilesSize @64 1 + IncludeFilesSize !64
+end
+
+fn IncludeFiles.Index int -> Str do
+    if dup IncludeFilesSize @64 < do
+        1 + SizeOf(Str) *
+        IncludeFilesData swap ptr_offset 
+        cast(int) SizeOf(int) - cast(ptr)
+        @Str drop
+    else
+        "[ERROR] Index " eputs eputd " is out of range for IncludeFiles[]\n" eputs
+        1 exit
+        NULL @Str drop
+    end
+end
+fn IncludeFiles.Contains Str -> bool do
+    push 
+    
+    false 0
+    while 
+        if dup IncludeFilesSize @64 < do 
+            dup IncludeFiles.Index pop dup
+            if push Str.Equals do
+                push drop true pop false
+            else
+                true
+            end
+        else
+            false
+        end
+    do
+        1 + 
+    end drop
+    pop drop
+
+end
+
+fn IncludeFiles.Pop -> Str do
+    IncludeFilesPtr @64 SizeOf(ptr) - cast(ptr)
+    @Str IncludeFilesPtr !64
+    IncludeFilesSize @64 1 - IncludeFilesSize !64
+end
+
+const TokensCap 100000 end
+reserve TokensData TokensCap SizeOf(Token) * end
+reserve TokensSize SizeOf(int) end
+reserve TokensPtr  SizeOf(ptr) end
+
+fn Tokens.Init do
+    TokensData TokensPtr !64
+    0 TokensSize !64
+end
+
+fn Tokens.Push Token do
+
+    if TokensSize @64 TokensCap == do
+        "Too many tokens!\n" eputs
+        1 exit
+    end 
+
+    TokensPtr @64 cast(ptr) !Token TokensPtr !64
+    TokensSize @64 1 + TokensSize !64
+end
+
+fn Tokens.Pop -> Token do
+    TokensPtr @64 SizeOf(ptr) - cast(ptr)
+    @Token cast(int) SizeOf(ptr) + TokensPtr !64
+    TokensSize @64 1 - TokensSize !64
+end
+
+fn Tokens.Index int -> Token do
+
+    if dup TokensSize @64 < do
+        1 + SizeOf(Token) *
+        TokensData swap
+        ptr_offset cast(int) SizeOf(int) - cast(ptr)
+        @Token drop
+    else
+        "[ERROR] Index " eputs eputd " is out of range for Tokens[]\n" eputs
+        Token.Default
+        1 exit
+    end
+end
+
+fn Tokens.Size -> int do
+    TokensSize @64 
+end
+
+fn Tokens.CopyFromBuffer do
+    
+    0 while dup TokensBuffer.Size < do
+        TokensBuffer.Pop Tokens.Push
+    end drop
+
+end
+
 const ProgramCap 10000 end
 reserve ProgramData ProgramCap SizeOf(Op) * end
 reserve ProgramSize SizeOf(int) end
@@ -329,8 +437,6 @@ fn parse_if_block_from_tokens Token do
 
     end drop drop
     drop 
-
-    
 end  
 
 fn parse_while_block_from_tokens Token do
@@ -402,6 +508,31 @@ fn parse_while_block_from_tokens Token do
 
 end
 
+fn parse_include_statement Token do
+
+    "Expected a string after a `USE` statement, but found end of file instead\n" swap
+    Tokens.Size 0 >
+    compiler_error
+
+    Tokens.Pop
+
+    if dup Token.Type Token.Type.STR == not do
+        dup Token.Loc Loc.ePrint 
+        "[ERROR]: Expected a string after use statement, but found " eputs 
+        dup Token.ePrint " instead.\n" eputs
+    end
+
+    Token.Value TokenValue.Str 
+    dup split cast(int) + cast(ptr) 0 swap !8
+    if dup IncludeFiles.Contains not do
+        dup tokenize_file Tokens.CopyFromBuffer
+        IncludeFiles.Push
+    else
+        drop
+    end
+
+end
+
 fn parse_tokens_until_keywords int -> Token do
 
     1 1 "" cast(Loc)
@@ -455,8 +586,11 @@ fn parse_tokens_until_keywords int -> Token do
                 drop 
                 parse_while_block_from_tokens
                 true
+            else dup Keyword.INCLUDE == do
+                drop
+                parse_include_statement
+                true
             else pop dup push & dup 0 > do
-            
                 drop pop pop drop swap push push
                 false
             else
@@ -984,8 +1118,11 @@ fn compile_program Str do
 end
 
 fn program_from_tokens do
+    IncludeFiles.Init
 
-    Tokens.Reverse
+    Tokens.Init
+    Tokens.CopyFromBuffer
+    
     Program.Init
 
     while Tokens.Size 0 > do
@@ -1009,7 +1146,7 @@ end
 
 fn main do 
 
-    "temp.tlp" tokenize_file
+    "tlp.tlp" tokenize_file
     program_from_tokens
     "generated.asm" compile_program
 
