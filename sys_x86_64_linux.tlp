@@ -27,7 +27,7 @@ fn sys_open
 do 
     2 syscall3 
     dup sys_ok?
-    swap as FileDesc
+    swap cast(FileDesc)
     swap
     
 end

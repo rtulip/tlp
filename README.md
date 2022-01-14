@@ -92,6 +92,8 @@ These are the built in operations for the language.
 | `swap` | `A B -> B A` | Swaps the order of the top two elements |
 | `drop` | `T -> ` | Consumes the top element from the stack |
 | `putu` | `int -> ` | Consumes and prints the top integer on the stack |
+| `push` | `T -> R[T]` | Consumes the top element of the stack, and pushes it onto the return stack.
+| `pop` | `R[T] -> T` | Consumes the top element of the return stack and pushes it onto the stack.
 
 ### Comparison Operators
 
@@ -118,7 +120,7 @@ Not all comparison operators have been implemented yet.
 | --------- | --------- | ----------- |
 | `<n> group` | `T1, T2, ... TN -> Group<n>` | Groups the top n elements into one element |
 | `group.<n>` | `Group<n> -> T` | Consumes the `group` and pushes the nth element onto the stack |
-| `as <name>` | `T1, T2, ... TN -> struct` | Groups the top elements of the stack into a `struct` |
+| `cast(<name>)` | `T1, T2, ... TN -> struct` | Groups the top elements of the stack into a `struct` |
 | `<name>.<n>` | `struct -> T` | Consumes the struct and pushes the nth element onto the stack |
 | `split` | `struct -> T1, T2, ... TN` | Breaks the `struct`/`group` into it's constituent parts |
 
@@ -177,5 +179,28 @@ fn bar bool do
 end
 ```
 
+### Constant Expression
+`Tulip` supports a very limited number of operations as constant expressions.
+
+```
+const <name> <expr> end
+```
+
+### Reserving Memory
+You can reserve fixed amounts of memory (such as for an array) with
+`reserve` blocks.
+
+```
+reserve <name> <int> end
+```
+
 ### Types
 There are only four types in Tulip by default: `int`, `bool`, `ptr`, and `Str`.
+
+### Including From Multiple Files
+
+You can include other files with `use` statements. Paths can be absolute or relative to the `tulip.py` compiler.
+
+```
+use "std.tlp"
+```

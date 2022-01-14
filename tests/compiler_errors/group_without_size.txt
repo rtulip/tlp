@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/group_without_size.tlp']
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/group_without_size.tlp:1:11 [ERROR]: `GROUP` expectes a preceding `UINT` for how many elements to group. Found MiscTokenKind.BOOL instead.
+./tests/compiler_errors/group_without_size.tlp:1:7 [ERROR]: `GROUP` expectes a preceding `UINT` for how many elements to group. Found MiscTokenKind.BOOL instead.
 --------------------------
 exit code: 1

@@ -1,5 +1,5 @@
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from subprocess import call
 from typing import List, Union, Dict, Optional, Any, Tuple, Callable
@@ -65,6 +65,8 @@ class Op():
 class Signature:
     pops: ArgList
     puts: Union[ArgList, Callable[[ArgList], Optional[ArgList]]]
+    rpops: ArgList = field(default_factory=lambda: [])
+    rputs: ArgList = field(default_factory=lambda: [])
 
 
 @ dataclass
@@ -72,9 +74,13 @@ class Function:
     ident: str
     signature: Signature
     tok: Token
-    start_ip: int
+    start_ip: Optional[int]
     end_ip: Optional[int]
+    number: int
+    stub: bool
 
+
+IncludedFiles: List[str] = []
 
 FunctionMeta = Dict[str, Function]
 Program = List[Op]
@@ -93,22 +99,29 @@ signatures = {
     OpType.NOP: Signature(pops=[], puts=[]),
     Intrinsic.ADD: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.SUB: Signature(pops=[INT, INT], puts=[INT]),
+    Intrinsic.DIV: Signature(pops=[INT, INT], puts=[INT]),
+    Intrinsic.MUL: Signature(pops=[INT, INT], puts=[INT]),
+    Intrinsic.MOD: Signature(pops=[INT, INT], puts=[INT]),
+    Intrinsic.AND: Signature(pops=[BOOL, BOOL], puts=[BOOL]),
     Intrinsic.OR: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.LSL: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.EQ: Signature(pops=[INT, INT], puts=[BOOL]),
     Intrinsic.LE: Signature(pops=[INT, INT], puts=[BOOL]),
     Intrinsic.LT: Signature(pops=[INT, INT], puts=[BOOL]),
+    Intrinsic.BW_AND: Signature(pops=[INT, INT], puts=[INT]),
     Intrinsic.READ64: Signature(pops=[PTR], puts=[INT]),
     Intrinsic.READ8: Signature(pops=[PTR], puts=[INT]),
+    Intrinsic.WRITE64: Signature(pops=[A, PTR], puts=[]),
+    Intrinsic.WRITE8: Signature(pops=[A, PTR], puts=[]),
     Intrinsic.GT: Signature(pops=[INT, INT], puts=[BOOL]),
     Intrinsic.PUTU: Signature(pops=[INT], puts=[]),
     Intrinsic.DUP: Signature(pops=[T], puts=[T, T]),
     Intrinsic.DROP: Signature(pops=[T], puts=[]),
     Intrinsic.SWAP: Signature(pops=[A, B], puts=[B, A]),
     Intrinsic.SPLIT: Signature(pops=[T], puts=lambda List_T: StructMembers[List_T[0]] if List_T[0].Struct else None),
-    Intrinsic.CAST_INT: Signature(pops=[T], puts=lambda pops: [INT] if pops[0] in [INT, BOOL, PTR] else None),
-    Intrinsic.CAST_PTR: Signature(pops=[INT], puts=[PTR]),
-    # Intrinsic.CAST_STRUCT creates signatures dynamically based on the struct
+    Intrinsic.RPUSH: Signature(pops=[T], puts=[], rputs=[T]),
+    Intrinsic.RPOP: Signature(pops=[], puts=[T], rpops=[T]),
+    # Intrinsic.CAST creates signatures dynamically based on the struct
     # Intrinsic.INNER_TUPLE creates a signature dynamically based on the tuple on the top of the stack.
     # Intrinsic.CAST_TUPLE  creates signatures dynamically based on the number of elements asked to group
 
@@ -129,14 +142,9 @@ assert len(signatures) == len(OpType) - N_SUM_IGNORE + len(Intrinsic), \
     f"Not all OpTypes and Intrinsics have a signature. Expected {len(OpType) - N_SUM_IGNORE + len(Intrinsic)} Found {len(signatures)}"
 
 
-def token_loc_str(token: Token):
-    return f"{token.loc.file}:{token.loc.line}:{token.loc.column}"
-
-
 def compiler_error(predicate: bool, token: Token, msg):
     if not predicate:
-        print(
-            f"{token_loc_str(token)} [ERROR]: {msg}", file=sys.stderr)
+        print(f"{token.loc} [ERROR]: {msg}", file=sys.stderr)
         exit(1)
 
 
@@ -151,7 +159,7 @@ def check_for_name_conflict(
         compiler_error(
             False,
             tok,
-            f"Redefinition of `{name}`. Previously defined here: {token_loc_str(fn_meta[name].tok)}"
+            f"Redefinition of `{name}`. Previously defined here: {fn_meta[name].tok.loc}"
         )
 
     if name in TypeDict.keys():
@@ -165,14 +173,14 @@ def check_for_name_conflict(
         compiler_error(
             False,
             tok,
-            f"Redefinition of `{name}`. Previously defined here: {token_loc_str(const_values[name].tok)}"
+            f"Redefinition of `{name}`. Previously defined here: {const_values[name].tok.loc}"
         )
 
     if name in reserved_memory.keys():
         compiler_error(
             False,
             tok,
-            f"Redefinition of `{name}`. Previously defined here: {token_loc_str(reserved_memory[name][1])}"
+            f"Redefinition of `{name}`. Previously defined here: {reserved_memory[name][1].loc}"
         )
 
 
@@ -362,6 +370,18 @@ def eval_const_ops(program: Program, tok: Token) -> Optional[Op]:
                 assert isinstance(a, int)
                 assert isinstance(b, int)
                 stack.append(a+b)
+            elif op.operand == Intrinsic.SUB:
+                b = stack.pop()
+                a = stack.pop()
+                assert isinstance(a, int)
+                assert isinstance(b, int)
+                stack.append(a-b)
+            elif op.operand == Intrinsic.MUL:
+                b = stack.pop()
+                a = stack.pop()
+                assert isinstance(a, int)
+                assert isinstance(b, int)
+                stack.append(a*b)
             elif op.operand == Intrinsic.OR:
                 b = stack.pop()
                 a = stack.pop()
@@ -550,11 +570,11 @@ def parse_include_statement(start_tok: Token, tokens: List[Token], program: Prog
     )
 
     include_str = include_str_tok.value
-
-    included_tokens = tokenize(include_str)
-    included_tokens.reverse()
-
-    tokens += included_tokens
+    if include_str not in IncludedFiles:
+        included_tokens = tokenize(include_str)
+        included_tokens.reverse()
+        tokens += included_tokens
+        IncludedFiles.append(include_str)
 
 
 def parse_fn_from_tokens(
@@ -567,13 +587,8 @@ def parse_fn_from_tokens(
 ):
     signature = Signature(pops=[], puts=[])
     assert isinstance(signature.puts, list)
-    start_loc = len(program)
+
     assert start_tok.typ == Keyword.FN
-    program.append(Op(
-        op=OpType.NOP,
-        operand=None,
-        tok=start_tok
-    ))
 
     compiler_error(
         len(tokens) > 0,
@@ -592,18 +607,17 @@ def parse_fn_from_tokens(
     assert isinstance(name_tok.value, str)
     fn_name = name_tok.value
 
-    check_for_name_conflict(
-        fn_name,
-        name_tok,
-        fn_meta,
-        const_values,
-        reserved_memory,
-    )
-
-    program[start_loc].operand = fn_name
+    if not (fn_name in fn_meta.keys() and fn_meta[fn_name].stub):
+        check_for_name_conflict(
+            fn_name,
+            name_tok,
+            fn_meta,
+            const_values,
+            reserved_memory,
+        )
 
     pops = True
-
+    stub = False
     compiler_error(
         len(tokens) > 0,
         name_tok,
@@ -653,6 +667,9 @@ def parse_fn_from_tokens(
             )
             break
 
+        elif tok.typ == Keyword.END:
+            stub = True
+            break
         else:
             compiler_error(
                 False,
@@ -661,59 +678,112 @@ def parse_fn_from_tokens(
     [Note]: Expected type names, `ARROW` or `DO`."""
             )
 
-    compiler_error(
-        tok.typ == Keyword.DO,
-        tok,
-        "Expected `DO` after function signature. Found end of file instead"
-    )
+    if not stub:
+        start_loc = len(program)
+        program.append(Op(
+            op=OpType.NOP,
+            operand=None,
+            tok=start_tok
+        ))
+        program[start_loc].operand = fn_name
+        compiler_error(
+            tok.typ == Keyword.DO,
+            tok,
+            "Expected `DO` after function signature. Found end of file instead"
+        )
 
-    fn_meta[fn_name] = Function(
-        ident=fn_name,
-        signature=signature,
-        tok=start_tok,
-        start_ip=start_loc,
-        end_ip=None
-    )
+        if fn_name in fn_meta.keys():
 
-    tok_to_end = parse_tokens_until_keywords(
-        tokens,
-        [Keyword.END],
-        program,
-        fn_meta,
-        const_values,
-        reserved_memory,
-    )
+            original_sig = fn_meta[fn_name].signature
+            assert isinstance(original_sig.puts, list)
+            compiler_error(
+                signature == fn_meta[fn_name].signature,
+                start_tok,
+                f"""Function signature for {fn_name} must match pre-declaration.
+    [Note]: Initially defined here: {fn_meta[fn_name].tok.loc}
+    [Note]: Expected Signature: {pretty_print_arg_list(original_sig.pops)} -> {pretty_print_arg_list(original_sig.puts)}
+    [Note]: Found Signature: {pretty_print_arg_list(signature.pops)} -> {pretty_print_arg_list(signature.puts)}"""
+            )
 
-    compiler_error(
-        isinstance(tok_to_end, Token),
-        name_tok,
-        "Unclosed Function definition. Expected `END`, but found end of file instead"
-    )
-    assert isinstance(tok_to_end, Token)
+            fn_meta[fn_name] = Function(
+                ident=fn_name,
+                signature=signature,
+                tok=start_tok,
+                start_ip=start_loc,
+                end_ip=None,
+                number=fn_meta[fn_name].number,
+                stub=False,
+            )
+        else:
 
-    compiler_error(
-        tok_to_end.typ == Keyword.END,
-        tok_to_end,
-        "Unclosed Function definition. Expected `END`, but found end of file instead"
-    )
+            fn_meta[fn_name] = Function(
+                ident=fn_name,
+                signature=signature,
+                tok=start_tok,
+                start_ip=start_loc,
+                end_ip=None,
+                number=len(fn_meta),
+                stub=False,
+            )
 
-    program.append(Op(
-        op=OpType.RETURN,
-        operand=None,
-        tok=tok_to_end
-    ))
+        tok_to_end = parse_tokens_until_keywords(
+            tokens,
+            [Keyword.END],
+            program,
+            fn_meta,
+            const_values,
+            reserved_memory,
+        )
 
-    program.append(Op(
-        op=OpType.NOP,
-        operand=Keyword.END,
-        tok=tok_to_end
-    ))
+        compiler_error(
+            isinstance(tok_to_end, Token),
+            name_tok,
+            "Unclosed Function definition. Expected `END`, but found end of file instead"
+        )
+        assert isinstance(tok_to_end, Token)
 
-    end_ip = len(program)
+        compiler_error(
+            tok_to_end.typ == Keyword.END,
+            tok_to_end,
+            "Unclosed Function definition. Expected `END`, but found end of file instead"
+        )
 
-    assert fn_name in fn_meta.keys()
-    assert fn_meta[fn_name].end_ip == None
-    fn_meta[fn_name].end_ip = end_ip
+        program.append(Op(
+            op=OpType.RETURN,
+            operand=None,
+            tok=tok_to_end
+        ))
+
+        program.append(Op(
+            op=OpType.NOP,
+            operand=Keyword.END,
+            tok=tok_to_end
+        ))
+
+        end_ip = len(program)
+
+        assert fn_name in fn_meta.keys()
+        assert fn_meta[fn_name].end_ip == None
+        fn_meta[fn_name].end_ip = end_ip
+    else:
+
+        if fn_name in fn_meta.keys():
+            compiler_error(
+                fn_name not in fn_meta.keys(),
+                start_tok,
+                f"""Cannot pre-define a function more than once.
+        [Note]: Functio {fn_name} initially defined here: {fn_meta[fn_name].tok.loc}"""
+            )
+
+        fn_meta[fn_name] = Function(
+            ident=fn_name,
+            signature=signature,
+            tok=start_tok,
+            start_ip=None,
+            end_ip=None,
+            number=len(fn_meta),
+            stub=True,
+        )
 
 
 def generate_accessor_tokens(start_tok: Token, new_struct: DataType, members: ArgList) -> List[Token]:
@@ -1262,20 +1332,28 @@ def asm_exit(out, strings, reserved_memory: MemoryMap):
         out.write(f"    mem_{k}: resb {v[0]}\n")
 
 
-def type_check_cond_jump(ip: int, program: Program, fn_meta: FunctionMeta, current_stack: List[DataType]) -> Tuple[int, List[List[DataType]]]:
+def type_check_cond_jump(
+    ip: int,
+    program: Program,
+    fn_meta: FunctionMeta,
+    current_stack: List[DataType],
+    return_stack: List[DataType]
+) -> Tuple[int, List[List[DataType]], List[List[DataType]]]:
     assert program[
         ip].op == OpType.JUMP_COND, f"Bug in type checking pointed to the wrong place. {program[ip]}"
     evaluate_signature(
         program[ip],
         signatures[OpType.JUMP_COND],
-        current_stack
+        current_stack,
+        return_stack,
     )
 
-    end_ip, stack_if_true = type_check_program(
+    end_ip, stack_if_true, ret_stack_if_true = type_check_program(
         program,
         fn_meta,
         start_from=ip + 1,
         starting_stack=current_stack.copy(),
+        starting_rstack=return_stack.copy(),
         break_on=[lambda op: op.tok.typ == Keyword.END]
     )
 
@@ -1284,11 +1362,12 @@ def type_check_cond_jump(ip: int, program: Program, fn_meta: FunctionMeta, curre
     jump_loc = program[ip].operand
     assert isinstance(jump_loc, int)
 
-    false_path_ip, stack_if_false = type_check_program(
+    false_path_ip, stack_if_false, ret_stack_if_false = type_check_program(
         program,
         fn_meta,
         start_from=jump_loc,
         starting_stack=current_stack.copy(),
+        starting_rstack=return_stack.copy(),
         break_on=[
             lambda op: op.tok.typ == Keyword.END,
             lambda op: op.op == OpType.JUMP_COND
@@ -1296,138 +1375,196 @@ def type_check_cond_jump(ip: int, program: Program, fn_meta: FunctionMeta, curre
     )
 
     if program[false_path_ip].tok.typ == Keyword.END and program[end_ip].tok.typ == Keyword.END and false_path_ip == end_ip:
-        return (end_ip, [stack_if_true, stack_if_false])
+        return (end_ip, [stack_if_true, stack_if_false], [ret_stack_if_true, ret_stack_if_false])
 
     elif program[false_path_ip].op == OpType.JUMP_COND:
-        _, branch_types = type_check_cond_jump(
+        _, branch_types, ret_branch_types = type_check_cond_jump(
             false_path_ip,
             program,
             fn_meta,
-            stack_if_false.copy()
+            stack_if_false.copy(),
+            ret_stack_if_false.copy(),
         )
-        return (end_ip, [stack_if_true] + branch_types)
+        return (end_ip, [stack_if_true] + branch_types, [ret_stack_if_true] + ret_branch_types)
 
     else:
         assert False, f"Well this was unexpected... {end_ip} vs {false_path_ip} {program[false_path_ip].op}:{program[false_path_ip].operand}"
 
 
-def type_check_if_block(ip: int, program: Program, fn_meta: FunctionMeta, current_stack: List[DataType]) -> Tuple[int, List[DataType]]:
+def pretty_print_arg_list(arg_list: List[DataType]) -> str:
+    s = "["
+    for t in arg_list[:-1]:
+        s += f"{t.Ident} "
+    if len(arg_list) > 0:
+        s += f"{arg_list[-1].Ident}"
+    s += "]"
+    return s
+
+
+def pretty_print_stack_options(possible_stacks: List[List[DataType]]) -> str:
+    s = "\n"
+    for i, stack in enumerate(possible_stacks):
+        s += f"        Branch {i+1}: {pretty_print_arg_list(stack)}\n"
+    return s
+
+
+def type_check_if_block(ip: int, program: Program, fn_meta: FunctionMeta, current_stack: List[DataType], return_stack: List[DataType]) -> Tuple[int, List[DataType], List[DataType]]:
     possile_stacks: List[List[DataType]] = []
 
     assert program[ip].tok.typ == Keyword.IF, "Bug in type checking pointed to the wrong place."
-    ip2, stack_before_jumpc = type_check_program(
+    ip2, stack_before_jumpc, ret_stack_before_jumpc = type_check_program(
         program,
         fn_meta,
         start_from=ip+1,
         starting_stack=current_stack.copy(),
+        starting_rstack=return_stack.copy(),
         break_on=[lambda op: op.op == OpType.JUMP_COND]
     )
 
-    end_ip, possible_stacks = type_check_cond_jump(
+    end_ip, possible_stacks, ret_possible_stacks = type_check_cond_jump(
         ip2,
         program,
         fn_meta,
-        stack_before_jumpc.copy()
+        stack_before_jumpc.copy(),
+        ret_stack_before_jumpc.copy()
     )
 
     match = True
     for i in range(len(possible_stacks)):
         for j in range(i+1, len(possible_stacks)):
             match &= possible_stacks[i] == possible_stacks[j]
+            match &= ret_possible_stacks[i] == ret_possible_stacks[j]
 
     compiler_error(
         match,
         program[ip].tok,
         f"""
     Each branch of an IF Block must produce a similare stack.
-    Possible outputs: {possible_stacks}
+    Possible outputs: {pretty_print_stack_options(possible_stacks)}
+    Possible pushed values: {pretty_print_stack_options(ret_possible_stacks)}
         """
     )
-    return (end_ip, possible_stacks[0])
+    return (end_ip, possible_stacks[0], ret_possible_stacks[0])
 
 
-def type_check_while_block(ip: int, program: Program, fn_meta: FunctionMeta, current_stack: List[DataType]) -> Tuple[int, List[DataType]]:
+def type_check_while_block(ip: int, program: Program, fn_meta: FunctionMeta, current_stack: List[DataType], return_stack: List[DataType]) -> Tuple[int, List[DataType], List[DataType]]:
 
     assert program[ip].tok.typ == Keyword.WHILE, "Bug in type checking pointed to the wrong spot."
 
-    ip2, current_stack = type_check_program(
+    ip2, current_stack, ret_current_stack = type_check_program(
         program,
         fn_meta,
         start_from=ip+1,
         starting_stack=current_stack.copy(),
+        starting_rstack=return_stack.copy(),
         break_on=[lambda op: op.op == OpType.JUMP_COND]
     )
 
     evaluate_signature(
         program[ip2],
         signatures[OpType.JUMP_COND],
-        current_stack
+        current_stack,
+        ret_current_stack
     )
 
     stack_before = current_stack.copy()
+    ret_stack_before = ret_current_stack.copy()
 
-    end_ip, final_stack = type_check_program(
+    end_ip, final_stack, final_ret_stack = type_check_program(
         program,
         fn_meta,
         start_from=ip2+1,
         starting_stack=current_stack.copy(),
+        starting_rstack=ret_current_stack.copy(),
         break_on=[lambda op: op.tok.typ == Keyword.END]
     )
+
     compiler_error(
-        stack_before == final_stack,
+        stack_before == final_stack and ret_stack_before == final_ret_stack,
         program[ip].tok,
         f"""
     While loops cannot change the stack outside of the loop
-    [Note]: Stack at start of loop: {stack_before}
-    [Note]: Stack at end of loop  : {final_stack}
+    [Note]: Stack at start of loop : {pretty_print_arg_list(stack_before)}
+    [Note]: Stack at end of loop   : {pretty_print_arg_list(final_stack)}
+    [Note]: Pushed at start of loop: {pretty_print_arg_list(ret_stack_before)}
+    [Note]: Pushed at end of loop  : {pretty_print_arg_list(final_ret_stack)}
         """
     )
 
-    return (end_ip+1, final_stack)
+    return (end_ip+1, final_stack, final_ret_stack)
 
 
-def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType]):
+def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType], return_stack: List[DataType]):
     n_args_expected = len(sig.pops)
+    n_rargs_expected = len(sig.rpops)
     # Check to see if there the correct number of arguments
     compiler_error(
         len(type_stack) >= n_args_expected,
         op.tok,
         f"""
         Operation {op.op}:{op.operand} Requires {n_args_expected} arguments. {len(type_stack)} found.
-        [Note]: Expected {sig.pops}
-        [Note]: Found    {type_stack}
+        [Note]: Expected {pretty_print_arg_list(sig.pops)}
+        [Note]: Found    {pretty_print_arg_list(type_stack)}
+        """
+    )
+
+    compiler_error(
+        len(return_stack) >= n_rargs_expected,
+        op.tok,
+        f"""
+        Operation {op.op}:{op.operand} Requires {n_rargs_expected} pushed arguments. {len(return_stack)} found.
+        [Note]: Expected {pretty_print_arg_list(sig.rpops)}
+        [Note]: Found    {pretty_print_arg_list(return_stack)}
         """
     )
 
     generic_map: Dict[DataType, DataType] = {}
 
     pop_sig: List[DataType] = []
+    rpop_sig: List[DataType] = []
 
     if isinstance(sig.puts, list):
-
         puts = sig.puts.copy()
+    rputs = sig.rputs.copy()
+
+    # Assign Generics
+    for i, T in enumerate(sig.pops):
+        if T.Generic:
+            if not T in generic_map:
+                generic_map[T] = type_stack[-n_args_expected:][i]
+            else:
+                compiler_error(
+                    generic_map[T] == type_stack[-n_args_expected:][i],
+                    op.tok,
+                    f"""
+    Generic Type Resolution Failure.
+    [Note]: Generic `{T.Ident}` was assigned `{generic_map[T].Ident}` yet `{type_stack[-n_args_expected:][i].Ident}` was found
+    [Note]: Signature: {pretty_print_arg_list(sig.pops)}
+    [Note]: Stack    : {pretty_print_arg_list(type_stack[-n_args_expected:])}
+                    """
+                )
+
+    for i, T in enumerate(sig.rpops):
+        if T.Generic:
+            if not T in generic_map:
+                generic_map[T] = return_stack[-n_rargs_expected:][i]
+            else:
+                compiler_error(
+                    generic_map[T] == return_stack[-n_rargs_expected:][i],
+                    op.tok,
+                    f"""
+    Generic Type Resolution Failure.
+    [Note]: Generic `{T.Ident}` was assigned `{generic_map[T].Ident}` yet `{return_stack[-n_rargs_expected:][i].Ident}` was found
+    [Note]: Signature: {pretty_print_arg_list(sig.rpops)}
+    [Note]: Stack    : {pretty_print_arg_list(return_stack[-n_rargs_expected:])}
+                    """
+                )
+    for T in sig.pops:
+        pop_sig.append(T if not T.Generic else generic_map[T])
+    for T in sig.rpops:
+        rpop_sig.append(T if not T.Generic else generic_map[T])
 
     if n_args_expected > 0:
-
-        # Assign Generics
-        for i, T in enumerate(sig.pops.copy()):
-
-            if T.Generic:
-                if not T in generic_map:
-                    generic_map[T] = type_stack[-n_args_expected:][i]
-                else:
-                    compiler_error(
-                        generic_map[T] == type_stack[-n_args_expected:][i],
-                        op.tok,
-                        f"""
-        Generic Type Resolution Failure.
-        [Note]: Generic `{T.Ident}` was assigned `{generic_map[T].Ident}` yet `{type_stack[-n_args_expected:][i].Ident}` was found
-        [Note]: Signature: {sig.pops}
-        [Note]: Stack    : {type_stack[-n_args_expected:]}
-                        """
-                    )
-            pop_sig.append(T if not T.Generic else generic_map[T])
-
         if type_stack[-n_args_expected:] == pop_sig:
             if callable(sig.puts):
                 assert not isinstance(sig.puts, list)
@@ -1448,6 +1585,9 @@ def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType]):
             elif op.operand == Intrinsic.DROP:
                 assert len(pop_sig) == 1
                 op.tok.value = pop_sig[0].Size
+            elif op.operand == Intrinsic.RPUSH:
+                assert len(pop_sig) == 1
+                op.tok.value = pop_sig[0].Size
             for _ in sig.pops:
                 type_stack.pop()
         else:
@@ -1456,13 +1596,34 @@ def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType]):
                 op.tok,
                 f"""
     Didn't find a matching signature for {op.op}:{op.operand}.
-    Expected: {sig.pops}
-    Found   : {type_stack[-n_args_expected:]}
+    Expected: {pretty_print_arg_list(sig.pops)}
+    Found   : {pretty_print_arg_list(type_stack[-n_args_expected:])}
+                """
+            )
+
+    if n_rargs_expected > 0:
+        if return_stack[-n_rargs_expected:] == rpop_sig:
+            if op.operand == Intrinsic.RPOP:
+                assert len(rpop_sig) == 1
+                op.tok.value = rpop_sig[0].Size
+            for _ in sig.rpops:
+                return_stack.pop()
+        else:
+            compiler_error(
+                False,
+                op.tok,
+                f"""
+    Didn't find a matching signature for {op.op}:{op.operand}.
+    Expected Return Stack: {pretty_print_arg_list(sig.rpops)}
+    Found Return Stack   : {pretty_print_arg_list(return_stack[-n_args_expected:])}
                 """
             )
 
     for T in puts:
         type_stack.append(T if not T.Generic else generic_map[T])
+
+    for T in rputs:
+        return_stack.append(T if not T.Generic else generic_map[T])
 
 
 def type_check_program(
@@ -1470,32 +1631,45 @@ def type_check_program(
     fn_meta: FunctionMeta,
     start_from: int = 0,
     starting_stack: List[DataType] = [],
+    starting_rstack: List[DataType] = [],
     break_on: List[Callable[[Op], bool]] = [],
     skip_fn_eval: bool = True
-) -> Tuple[int, List[DataType]]:
+) -> Tuple[int, List[DataType], List[DataType]]:
     type_stack: List[DataType] = starting_stack.copy()
+    ret_stack: List[DataType] = starting_rstack.copy()
     ip = start_from
 
     if not skip_fn_eval:
         for fn in fn_meta.values():
-            end_ip, out_stack = type_check_program(
+            assert fn.start_ip is not None
+            end_ip, out_stack, out_ret_stack = type_check_program(
                 program,
                 fn_meta,
                 fn.start_ip + 1,    # Start one instruction past the FN name marker
                 starting_stack=fn.signature.pops.copy(),
+                starting_rstack=[],
                 break_on=[
                     lambda op: op.op == OpType.NOP and op.tok.typ == Keyword.END
                 ]
             )
 
+            puts = fn.signature.puts
+            assert isinstance(puts, list)
             compiler_error(
                 out_stack == fn.signature.puts,
                 fn.tok,
                 f"""
     Function `{fn.ident}` output doesn't match signature.
-    [Note]: Expected Output Stack: {fn.signature.puts}
-    [Note]: Actual Output Stack  : {out_stack}
+    [Note]: Expected Output Stack: {pretty_print_arg_list(puts)}
+    [Note]: Actual Output Stack  : {pretty_print_arg_list(out_stack)}
                 """
+            )
+
+            compiler_error(
+                len(out_ret_stack) == 0,
+                fn.tok,
+                f"""Function `{fn.ident}` doesn't leave an empty return stack.
+    [Note]: Expected Empty Return Stack, but found: {pretty_print_arg_list(out_ret_stack)}"""
             )
 
     while ip < len(program):
@@ -1503,41 +1677,61 @@ def type_check_program(
         if any([cond(op) for cond in break_on]):
             break
 
-        assert op.op != OpType.JUMP_COND, f"{token_loc_str(op.tok)} Type Checking error: Unhandled conditional jump"
+        assert op.op != OpType.JUMP_COND, f"{op.tok.loc} Type Checking error: Unhandled conditional jump"
 
         if op.op == OpType.NOP and op.tok.typ == Keyword.IF:
-            ip, type_stack = type_check_if_block(
+            ip, type_stack, ret_stack = type_check_if_block(
                 ip,
                 program,
                 fn_meta,
-                type_stack
+                type_stack,
+                ret_stack,
             )
             ip += 1
         elif op.op == OpType.NOP and op.tok.typ == Keyword.WHILE:
-            ip, type_stack = type_check_while_block(
+            ip, type_stack, ret_stack = type_check_while_block(
                 ip,
                 program,
                 fn_meta,
-                type_stack
+                type_stack,
+                ret_stack
             )
         else:
             # Make sure that there are sufficient arguments on the stack
             if op.op == OpType.INTRINSIC:
                 assert isinstance(op.operand, Intrinsic)
 
-                if op.tok.typ == Intrinsic.CAST_STRUCT:
+                if op.tok.typ == Intrinsic.CAST:
                     compiler_error(
                         op.tok.value in TypeDict.keys(),
                         op.tok,
                         f"Unrecognized Data Type `{op.tok.value}`"
                     )
-                    struct_t = TypeDict[op.tok.value]
-                    assert struct_t.Struct and struct_t in StructMembers.keys()
-
-                    sig = Signature(
-                        pops=StructMembers[struct_t].copy(),
-                        puts=[struct_t]
-                    )
+                    t = TypeDict[op.tok.value]
+                    if t.Struct:
+                        assert t in StructMembers.keys(), f"{t}"
+                        sig = Signature(
+                            pops=StructMembers[t].copy(),
+                            puts=[t]
+                        )
+                    else:
+                        if t.Ident == INT.Ident:
+                            sig = Signature(
+                                pops=[T],
+                                puts=lambda stk: [INT] if stk[0] in [
+                                    INT, BOOL, PTR] else None
+                            )
+                        elif t.Ident == PTR.Ident:
+                            sig = Signature(
+                                pops=[INT],
+                                puts=[PTR]
+                            )
+                        else:
+                            compiler_error(
+                                False,
+                                op.tok,
+                                f"Cannot cast to built in type {t.Ident}"
+                            )
                 elif op.tok.typ == Intrinsic.CAST_TUPLE:
                     global TUPLE_IDENT_COUNT
                     n = op.tok.value
@@ -1614,8 +1808,7 @@ def type_check_program(
             else:
                 sig = signatures[op.op]
 
-            evaluate_signature(op, sig, type_stack)
-
+            evaluate_signature(op, sig, type_stack, ret_stack)
             if (op.op == OpType.JUMP):
                 assert isinstance(op.operand, int)
                 ip = op.operand
@@ -1629,12 +1822,45 @@ def type_check_program(
 
     if ip == len(program):
         ip -= 1
-    return (ip, type_stack)
+    return (ip, type_stack, ret_stack)
+
+
+def print_ret_stack_rsp(out):
+    out.write(f"    mov rbx, [ret_stack_rsp]\n")
+    out.write(f"    mov rdi, rbx\n")
+    out.write(f"    call putu\n")
+    out.write(f"    mov rdi, [rbx]\n")
+    out.write(f"    call putu\n")
 
 
 def op_drop_to_asm(out, N):
     for i in range(N):
         out.write("    pop     rax\n")
+
+
+def op_ret_stack_push(out, N):
+    # print_ret_stack_rsp(out)
+    for i in range(N):
+        out.write(f"    sub     qword [ret_stack_rsp], 8\n")
+        out.write(f"    pop     rax\n")
+        out.write(f"    mov     rbx, [ret_stack_rsp]\n")
+        out.write(f"    mov     [rbx], rax\n")
+        # print_ret_stack_rsp(out)
+    # out.write(f"    mov rdi, [ret_stack_rsp]\n")
+    # out.write(f"    call putu\n")
+
+
+# [..... (rsp)]
+#          ^  ^end
+
+
+def op_ret_stack_pop(out, N):
+    for i in range(N):
+        out.write(f"    mov     rbx, [ret_stack_rsp]\n")
+        out.write(f"    mov     rax, [rbx]\n")
+        out.write(f"    push    rax\n")
+        out.write(f"    add     qword [ret_stack_rsp], 8\n")
+        # print_ret_stack_rsp(out)
 
 
 def op_swap_to_asm(out, ip, n, m):
@@ -1702,17 +1928,49 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                     out.write(f"    pop     rbx\n")
                     out.write(f"    sub     rbx, rax\n")
                     out.write(f"    push    rbx\n")
+                elif op.operand == Intrinsic.MUL:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    pop     rcx\n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    mul     rcx\n")
+                    out.write(f"    push    rax\n")
+                elif op.operand == Intrinsic.DIV:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    mov     rdx, 0\n")
+                    out.write(f"    pop     rcx\n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    div     rcx\n")
+                    out.write(f"    push    rax\n")
+                elif op.operand == Intrinsic.MOD:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    mov     rdx, 0\n")
+                    out.write(f"    pop     rcx\n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    div     rcx\n")
+                    out.write(f"    push    rdx\n")
                 elif op.operand == Intrinsic.LSL:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write(f"    pop     rcx\n")
                     out.write(f"    pop     rbx\n")
                     out.write(f"    shl     rbx, cl\n")
                     out.write(f"    push    rbx\n")
+                elif op.operand == Intrinsic.AND:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    pop     rbx\n")
+                    out.write(f"    and     rbx, rax\n")
+                    out.write(f"    push    rbx\n")
                 elif op.operand == Intrinsic.OR:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write(f"    pop     rax\n")
                     out.write(f"    pop     rbx\n")
                     out.write(f"    or      rbx, rax\n")
+                    out.write(f"    push    rbx\n")
+                elif op.operand == Intrinsic.BW_AND:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    pop     rax\n")
+                    out.write(f"    pop     rbx\n")
+                    out.write(f"    and     rbx, rax\n")
                     out.write(f"    push    rbx\n")
                 elif op.operand == Intrinsic.PUTU:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
@@ -1738,6 +1996,14 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                         f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
                     n, m = op.tok.value
                     op_swap_to_asm(out, ip, n, m)
+                elif op.operand == Intrinsic.RPUSH:
+                    out.write(
+                        f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+                    op_ret_stack_push(out, op.tok.value)
+                elif op.operand == Intrinsic.RPOP:
+                    out.write(
+                        f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+                    op_ret_stack_pop(out, op.tok.value)
                 elif op.operand == Intrinsic.SPLIT:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                 elif op.operand == Intrinsic.READ64:
@@ -1751,6 +2017,16 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                     out.write(f"    xor     rbx, rbx\n")
                     out.write(f"    mov     bl, [rax]\n")
                     out.write(f"    push    rbx\n")
+                elif op.operand == Intrinsic.WRITE64:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    pop rax\n")
+                    out.write(f"    pop rbx\n")
+                    out.write(f"    mov [rax], rbx\n")
+                elif op.operand == Intrinsic.WRITE8:
+                    out.write(f";; --- {op.op} {op.operand} --- \n")
+                    out.write(f"    pop rax\n")
+                    out.write(f"    pop rbx\n")
+                    out.write(f"    mov [rax], bl\n")
                 elif op.operand == Intrinsic.EQ:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write(f"    mov     rcx, 0\n")
@@ -1787,11 +2063,7 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                     out.write(f"    cmp     rax, rbx\n")
                     out.write(f"    cmovg   rcx, rdx\n")
                     out.write(f"    push    rcx\n")
-                elif op.operand == Intrinsic.CAST_INT:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                elif op.operand == Intrinsic.CAST_PTR:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                elif op.operand == Intrinsic.CAST_STRUCT:
+                elif op.operand == Intrinsic.CAST:
                     out.write(
                         f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
                 elif op.operand == Intrinsic.CAST_TUPLE:
@@ -1887,9 +2159,10 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                     assert isinstance(op.operand, str)
                     assert op.operand in fn_meta.keys()
                     after_fn_def = fn_meta[op.operand].end_ip
+                    fn_number = fn_meta[op.operand].number
                     assert after_fn_def != None
                     out.write(f"jmp op_{after_fn_def}\n")
-                    out.write(f"fn_{op.operand}:\n")
+                    out.write(f"fn_{fn_number}:\n")
                     out.write(f"    mov     [ret_stack_rsp], rsp\n")
                     out.write(f"    mov     rsp, rax\n")
                 else:
@@ -1900,10 +2173,11 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                 out.write(f"    mov     rsp, [ret_stack_rsp]\n")
                 out.write(f"    ret\n")
             elif op.op == OpType.CALL:
+                assert isinstance(op.operand, str)
                 out.write(f";; --- {op.op} {op.operand} --- \n")
                 out.write(f"    mov     rax, rsp\n")
                 out.write(f"    mov     rsp, [ret_stack_rsp]\n")
-                out.write(f"    call    fn_{op.operand}\n")
+                out.write(f"    call    fn_{fn_meta[op.operand].number}\n")
                 out.write(f"    mov     [ret_stack_rsp], rsp\n")
                 out.write(f"    mov     rsp, rax\n")
             else:
@@ -1939,7 +2213,13 @@ if __name__ == "__main__":
     #     print(f"{ip} -- {op.op}: {op.operand} TokenType: {op.tok.typ}")
     # print("-------------------------------------------")
 
-    ip, type_stack = type_check_program(program, fn_meta, skip_fn_eval=False)
+    # print(f"Len Program: {len(program)}")
+
+    ip, type_stack, ret_stack = type_check_program(
+        program,
+        fn_meta,
+        skip_fn_eval=False
+    )
 
     if len(program) > 0:
 
@@ -1947,8 +2227,16 @@ if __name__ == "__main__":
             len(type_stack) == 0,
             program[ip].tok,
             f"""Unhandled data on the datastack.
-        [Note]: Expected an empty stack found {type_stack} instead"""
+    [Note]: Expected an empty stack found: {pretty_print_arg_list(type_stack)}"""
         )
+
+        compiler_error(
+            len(ret_stack) == 0,
+            program[ip].tok,
+            f"""Unhandled pushed data.
+    [Note]: Expected no data to be pushed found {pretty_print_arg_list(ret_stack)}"""
+        )
+
         compile_program("output", program, fn_meta, reserved_memory)
     else:
         print("Empty Program...")

@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/type_check_errors/deref_group_wo_group_on
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/type_check_errors/deref_group_wo_group_on_top.tlp:1:9 [ERROR]: Expected to find an `GROUP` on the top of the stack. Found int instead
+./tests/type_check_errors/deref_group_wo_group_on_top.tlp:1:3 [ERROR]: Expected to find an `GROUP` on the top of the stack. Found int instead
 --------------------------
 exit code: 1

@@ -2,10 +2,10 @@ args: ['python3', 'tulip.py', './tests/type_check_errors/fn_output_does_not_matc
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/type_check_errors/fn_output_does_not_match_signature.tlp:1:2 [ERROR]: 
+./tests/type_check_errors/fn_output_does_not_match_signature.tlp:1:1 [ERROR]: 
     Function `foo` output doesn't match signature.
     [Note]: Expected Output Stack: []
-    [Note]: Actual Output Stack  : [DataType(Ident='int', Generic=False, Struct=False, Size=1)]
+    [Note]: Actual Output Stack  : [int]
                 
 --------------------------
 exit code: 1

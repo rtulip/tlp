@@ -6,8 +6,8 @@ struct bar
     int int
 end
 
-69 420 as bar
-30 31 32 as foo
+69 420 cast(bar)
+30 31 32 cast(foo)
 
 dup foo.0 putu
 dup foo.1 putu

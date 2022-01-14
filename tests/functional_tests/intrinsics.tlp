@@ -3,25 +3,25 @@ use "std.tlp"
 "15 + 14: " puts 15 14 + putu
 "10 + 5: " puts 10 5 - putu
 
-"0 == 0: " puts 0 0 == putb
-"0 == 1: " puts 0 1 == putb
-"1 == 0: " puts 1 0 == putb
+"0 == 0: " puts 0 0 == putb "\n" puts
+"0 == 1: " puts 0 1 == putb "\n" puts
+"1 == 0: " puts 1 0 == putb "\n" puts
 
-"2 == 2: " puts 2 2 == putb 
+"2 == 2: " puts 2 2 == putb "\n" puts
 
-"0 <= 1: " puts 0 1 <= putb
-"1 <= 1: " puts 1 1 <= putb
-"2 <= 1: " puts 2 1 <= putb
+"0 <= 1: " puts 0 1 <= putb "\n" puts
+"1 <= 1: " puts 1 1 <= putb "\n" puts
+"2 <= 1: " puts 2 1 <= putb "\n" puts
 
 "1 << 5: " puts 1 5 << putu
 
-"0 < 1: " puts 0 1 < putb
-"1 < 1: " puts 1 1 < putb
-"2 < 1: " puts 2 1 < putb
+"0 < 1: " puts 0 1 < putb "\n" puts
+"1 < 1: " puts 1 1 < putb "\n" puts
+"2 < 1: " puts 2 1 < putb "\n" puts
 
-"0 > 1: " puts 0 1 > putb
-"1 > 1: " puts 1 1 > putb
-"2 > 1: " puts 2 1 > putb
+"0 > 1: " puts 0 1 > putb "\n" puts
+"1 > 1: " puts 1 1 > putb "\n" puts
+"2 > 1: " puts 2 1 > putb "\n" puts
 
 "2 | 4: " puts 2 4 or putu
 
@@ -29,7 +29,7 @@ use "std.tlp"
 while dup Str.Size 0 > do 
     dup Str.Data @8 putu
     dup Str.Size 1 - swap 
-    Str.Data as int 1 + as ptr as Str
+    Str.Data cast(int) 1 + cast(ptr) cast(Str)
 end drop
 
 // Create a 64 bit "number" in memory to read.

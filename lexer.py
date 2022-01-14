@@ -1,3 +1,4 @@
+from os import unsetenv
 from sys import argv
 from enum import Enum, unique
 from dataclasses import dataclass
@@ -36,22 +37,29 @@ These are operations which may consume and or add to the stack.
 class Intrinsic(Enum):
     ADD = "\+"
     SUB = "-"
+    DIV = "/"
+    MUL = "\*"
+    MOD = "%"
     EQ = "=="
     LE = "<="
     LSL = "<<"
     LT = "<"
     GT = ">"
+    BW_AND = "&"
     READ64 = "@64"
     READ8 = "@8"
+    WRITE64 = "!64"
+    WRITE8 = "!8"
     OR = "or"
+    AND = "and"
+    RPUSH = "push"
+    RPOP = 'pop'
     PUTU = "putu"
     DUP = 'dup'
     DROP = 'drop'
     SWAP = 'swap'
     SPLIT = 'split'
-    CAST_INT = 'as int'
-    CAST_PTR = 'as ptr'
-    CAST_STRUCT = 'as [a-zA-Z]\w*'
+    CAST = 'cast\([a-zA-Z]\w*\)'
     INNER_TUPLE = 'group\.[0-9]+'
     CAST_TUPLE = 'group'
     SYSCALL0 = 'syscall0'
@@ -97,12 +105,25 @@ class Loc:
     column: int
     file: str
 
+    def __str__(self) -> str:
+        return f"{self.file}:{self.line}:{self.column}"
+
 
 @dataclass
 class Token:
     typ: TokenType
     value: Any
     loc: Loc
+
+    def __str__(self) -> str:
+        if self.typ == MiscTokenKind.STRING:
+            return f"{self.loc}: {self.typ.name}: \"{repr(self.value)[1:-1]}\""
+        elif type(self.typ) == Keyword:
+            return f"{self.loc}: Keyword: {self.typ.name}"
+        elif type(self.typ) == Intrinsic:
+            return f"{self.loc}: Intrinsic: {self.typ.name}"
+        else:
+            return f"{self.loc}: {self.typ.name}: {self.value}"
 
 
 @dataclass
@@ -159,8 +180,8 @@ def to_value(s: str, tok: TokenType) -> Any:
     if isinstance(tok, Keyword):
         return None
     elif isinstance(tok, Intrinsic):
-        if tok == Intrinsic.CAST_STRUCT:
-            return s[3:]
+        if tok == Intrinsic.CAST:
+            return s[5:-1]
         elif tok == Intrinsic.INNER_TUPLE:
             return int(s[s.find('.')+1:])
         else:
@@ -185,7 +206,7 @@ def to_value(s: str, tok: TokenType) -> Any:
 
 def tokenize_line(line: str, line_num: int, filename: str) -> List[Token]:
     tokens = []
-    cursor_pos = 0
+    cursor_pos = 1
     while len(line) > 0:
         typ, m = patterns.search(line)
         # Ignore comments and whitespace
@@ -201,14 +222,15 @@ def tokenize_line(line: str, line_num: int, filename: str) -> List[Token]:
             token_str = token_str[contains_comment.start():
                                   contains_comment.end()]
             line = line[contains_comment.start():]
-            cursor_pos += contains_comment.start()
+            pos_change = contains_comment.start()
         else:
             line = line[m.end():]
-            cursor_pos += m.end()
+            pos_change = m.end()
 
         tokens.append(Token(typ=typ,
                             value=to_value(token_str, typ),
                             loc=Loc(line=line_num, column=cursor_pos, file=filename)))
+        cursor_pos += pos_change
 
     return tokens
 
@@ -231,3 +253,6 @@ if __name__ == "__main__":
         exit(1)
 
     tokens = tokenize(argv[1])
+    # tokens.reverse()
+    for token in tokens:
+        print(token)

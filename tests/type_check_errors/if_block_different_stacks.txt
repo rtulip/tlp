@@ -2,9 +2,16 @@ args: ['python3', 'tulip.py', './tests/type_check_errors/if_block_different_stac
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/type_check_errors/if_block_different_stacks.tlp:1:2 [ERROR]: 
+./tests/type_check_errors/if_block_different_stacks.tlp:1:1 [ERROR]: 
     Each branch of an IF Block must produce a similare stack.
-    Possible outputs: [[DataType(Ident='int', Generic=False, Struct=False, Size=1)], [DataType(Ident='bool', Generic=False, Struct=False, Size=1)]]
+    Possible outputs: 
+        Branch 1: [int]
+        Branch 2: [bool]
+
+    Possible pushed values: 
+        Branch 1: []
+        Branch 2: []
+
         
 --------------------------
 exit code: 1

@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/reserve_eof.tlp']
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/reserve_eof.tlp:1:7 [ERROR]: Expected identifier after `RESERVE` statement, but found end of file instead
+./tests/compiler_errors/reserve_eof.tlp:1:1 [ERROR]: Expected identifier after `RESERVE` statement, but found end of file instead
 --------------------------
 exit code: 1
