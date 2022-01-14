@@ -6,7 +6,7 @@ fn @int ptr -> int ptr do
     cast(int) SizeOf(int) - cast(ptr) dup @64 cast(int) swap
 end
 
-fn !bool int ptr -> ptr do 
+fn !bool bool ptr -> ptr do 
     dup push !64 pop cast(int) SizeOf(bool) + cast(ptr)
 end
 
@@ -20,4 +20,9 @@ end
 
 fn @ptr ptr -> ptr ptr do
     cast(int) SizeOf(ptr) - cast(ptr) dup @64 cast(ptr) swap
+end
+
+struct Str
+    int
+    ptr
 end

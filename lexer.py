@@ -238,6 +238,10 @@ def tokenize_line(line: str, line_num: int, filename: str) -> List[Token]:
     return tokens
 
 
+def tokenize_string(string: str) -> List[Token]:
+    return tokenize_line(string, 0, "")
+
+
 def tokenize(filepath: str) -> List[Token]:
     with open(filepath) as file:
         file_lines = file.readlines()

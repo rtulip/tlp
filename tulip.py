@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from subprocess import call
 from typing import List, Union, Dict, Optional, Any, Tuple, Callable
-from lexer import tokenize, Token, Intrinsic, MiscTokenKind, Keyword
+from lexer import tokenize, Token, Intrinsic, MiscTokenKind, Keyword, tokenize_string
 import sys
 
 
@@ -46,12 +46,10 @@ TypeDict: Dict[str, DataType] = {
     "int": INT,
     "bool": BOOL,
     "ptr": PTR,
-    "Str": STR,
 }
 
 ArgList = List[DataType]
 StructMembers: Dict[DataType, ArgList] = {}
-StructMembers[STR] = [INT, PTR]
 
 
 @ dataclass
@@ -798,6 +796,36 @@ def parse_fn_from_tokens(
         )
 
 
+def generate_read_write_fns(start_tok: Token, new_struct: DataType, members: ArgList) -> List[Token]:
+    assert new_struct.Struct
+
+    tokens: List[Token] = []
+    name = new_struct.Ident
+    loc = start_tok.loc
+
+    tokens += tokenize_string(f"fn !{name} {name} ptr -> ptr do")
+    tokens += tokenize_string(f"push split pop")
+    m = members.copy()
+    while len(m) > 0:
+        t = m.pop()
+        tokens += tokenize_string(f"!{t.Ident}")
+    tokens += tokenize_string("end")
+
+    tokens += tokenize_string(f"fn @{name} ptr -> {name} ptr do")
+    m = members.copy()
+    m.reverse()
+    while len(m) > 0:
+        t = m.pop()
+        tokens += tokenize_string(f"@{t.Ident}")
+    tokens += tokenize_string(f"push cast({name}) pop")
+    tokens += tokenize_string("end")
+
+    for tok in tokens:
+        tok.loc = loc
+
+    return tokens
+
+
 def generate_accessor_tokens(start_tok: Token, new_struct: DataType, members: ArgList) -> List[Token]:
 
     assert new_struct.Struct
@@ -806,76 +834,21 @@ def generate_accessor_tokens(start_tok: Token, new_struct: DataType, members: Ar
 
     name = new_struct.Ident
     loc = start_tok.loc
+
     for i, typ in enumerate(members):
-        # Fn
-        tokens.append(
-            Token(
-                typ=Keyword.FN,
-                value=None,
-                loc=loc
-            )
-        )
-
-        tokens.append(Token(
-            typ=MiscTokenKind.WORD,
-            value=name+f".{i}",
-            loc=loc
-        ))
-
-        tokens.append(Token(
-            typ=MiscTokenKind.WORD,
-            value=name,
-            loc=loc
-        ))
-
-        tokens.append(Token(
-            typ=Keyword.ARROW,
-            value=None,
-            loc=loc
-        ))
-
-        tokens.append(Token(
-            typ=MiscTokenKind.WORD,
-            value=typ.Ident,
-            loc=loc
-        ))
-
-        tokens.append(Token(
-            typ=Keyword.DO,
-            value=None,
-            loc=loc
-        ))
-
-        tokens.append(Token(
-            typ=Intrinsic.SPLIT,
-            value=None,
-            loc=loc
-        ))
-
+        tokens += tokenize_string(f"fn {name}.{i} {name} -> {typ.Ident} do")
+        tokens += tokenize_string(f"split")
         for _ in range(i, len(members)-1):
-            tokens.append(Token(
-                typ=Intrinsic.DROP,
-                value=None,
-                loc=loc
-            ))
+            tokens += tokenize_string("drop")
 
         for _ in range(i):
-            tokens.append(Token(
-                typ=Intrinsic.SWAP,
-                value=None,
-                loc=loc
-            ))
-            tokens.append(Token(
-                typ=Intrinsic.DROP,
-                value=None,
-                loc=loc
-            ))
+            tokens += tokenize_string("swap drop")
+        tokens += tokenize_string("end")
 
-        tokens.append(Token(
-            typ=Keyword.END,
-            value=None,
-            loc=loc
-        ))
+    for tok in tokens:
+        tok.loc = loc
+
+    tokens += generate_read_write_fns(start_tok, new_struct, members)
 
     tokens.reverse()
 
@@ -1240,7 +1213,6 @@ def program_from_tokens(
     fn_meta: FunctionMeta = {},
     reserved_memory: MemoryMap = {},
 ) -> Tuple[Program, FunctionMeta, MemoryMap]:
-
 
     const_values: ConstMap = {}
     tokens.reverse()
