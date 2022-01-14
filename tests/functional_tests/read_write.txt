@@ -1,0 +1,15 @@
+args: ['python3', 'tulip.py', './tests/functional_tests/read_write.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+--------------------------
+exit code: 0
+##########################
+args: ['./output']
+-------- stdout ----------
+Hi again!
+Hello World!
+--------------------------
+-------- stderr ----------
+--------------------------
+exit code: 0

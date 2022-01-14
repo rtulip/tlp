@@ -1,0 +1,8 @@
+use "std.tlp"
+reserve two_strings SizeOf(Str) 2 * end
+
+"Hello World!\n" two_strings !Str push
+"Hi again!\n" pop !Str
+
+@Str push puts pop
+@Str drop puts
