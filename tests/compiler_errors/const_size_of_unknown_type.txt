@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/const_size_of_unknown_type.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/const_size_of_unknown_type.tlp:1:11 [ERROR]: Cannot get size of unknown type `bar`.
+--------------------------
+exit code: 1

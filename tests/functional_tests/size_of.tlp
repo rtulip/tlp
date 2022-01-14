@@ -1,0 +1,13 @@
+SizeOf(int) putu
+SizeOf(bool) putu
+SizeOf(ptr) putu
+SizeOf(Str) putu
+
+struct foo
+    int
+    bool
+    ptr
+    Str
+end
+
+SizeOf(foo) putu

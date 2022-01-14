@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/size_of_unknown_type.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/size_of_unknown_type.tlp:1:1 [ERROR]: Cannot get size of unknown type `foo`.
+--------------------------
+exit code: 1

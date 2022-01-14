@@ -121,6 +121,7 @@ signatures = {
     Intrinsic.SPLIT: Signature(pops=[T], puts=lambda List_T: StructMembers[List_T[0]] if List_T[0].Struct else None),
     Intrinsic.RPUSH: Signature(pops=[T], puts=[], rputs=[T]),
     Intrinsic.RPOP: Signature(pops=[], puts=[T], rpops=[T]),
+    Intrinsic.SIZE_OF: Signature(pops=[], puts=[INT]),
     # Intrinsic.CAST creates signatures dynamically based on the struct
     # Intrinsic.INNER_TUPLE creates a signature dynamically based on the tuple on the top of the stack.
     # Intrinsic.CAST_TUPLE  creates signatures dynamically based on the number of elements asked to group
@@ -140,6 +141,8 @@ N_IGNORED_OP = 1
 N_SUM_IGNORE = N_DYNAMIC_INTRINSICS + N_IGNORED_OP
 assert len(signatures) == len(OpType) - N_SUM_IGNORE + len(Intrinsic), \
     f"Not all OpTypes and Intrinsics have a signature. Expected {len(OpType) - N_SUM_IGNORE + len(Intrinsic)} Found {len(signatures)}"
+
+PRELUDE_SIZE = 0
 
 
 def compiler_error(predicate: bool, token: Token, msg):
@@ -269,8 +272,9 @@ def parse_tokens_until_keywords(
             )
 
             if tok.typ == Intrinsic.CAST_TUPLE:
+                global PRELUDE_SIZE
                 compiler_error(
-                    len(program) > 0,
+                    len(program) > PRELUDE_SIZE,
                     tok,
                     f"`GROUP` expects a preceding `UINT`, but found end of file instead"
                 )
@@ -394,6 +398,14 @@ def eval_const_ops(program: Program, tok: Token) -> Optional[Op]:
                 assert isinstance(a, int)
                 assert isinstance(b, int)
                 stack.append(a << b)
+            elif op.operand == Intrinsic.SIZE_OF:
+                compiler_error(
+                    op.tok.value in TypeDict.keys(),
+                    op.tok,
+                    f"Cannot get size of unknown type `{op.tok.value}`."
+                )
+
+                stack.append(TypeDict[op.tok.value].Size * 8)
             else:
                 compiler_error(
                     False,
@@ -1214,11 +1226,23 @@ def parse_while_block_from_tokens(
     program[do_tok_loc].operand = len(program)
 
 
-def program_from_tokens(tokens: List[Token]) -> Tuple[Program, FunctionMeta, MemoryMap]:
-    program: Program = []
-    fn_meta: FunctionMeta = {}
+def program_from_prelude() -> Tuple[Program, FunctionMeta, MemoryMap]:
+    prelude_tokens = tokenize("prelude/prelude.tlp")
+    program, fn_meta, reserved_mem = program_from_tokens(prelude_tokens)
+    global PRELUDE_SIZE
+    PRELUDE_SIZE = len(program)
+    return (program, fn_meta, reserved_mem)
+
+
+def program_from_tokens(
+    tokens: List[Token],
+    program: Program = [],
+    fn_meta: FunctionMeta = {},
+    reserved_memory: MemoryMap = {},
+) -> Tuple[Program, FunctionMeta, MemoryMap]:
+
+
     const_values: ConstMap = {}
-    reserved_memory: MemoryMap = {}
     tokens.reverse()
 
     expected_keywords: List[Keyword] = [
@@ -1726,6 +1750,11 @@ def type_check_program(
                                 pops=[INT],
                                 puts=[PTR]
                             )
+                        elif t.Ident == BOOL.Ident:
+                            sig = Signature(
+                                pops=[INT],
+                                puts=[BOOL]
+                            )
                         else:
                             compiler_error(
                                 False,
@@ -2085,7 +2114,16 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                             out, f"{ip}_{i}", members[-2].Size, members[-1].Size)
                         op_drop_to_asm(out, members[-2].Size)
                         del members[-2]
-
+                elif op.operand == Intrinsic.SIZE_OF:
+                    compiler_error(
+                        op.tok.value in TypeDict.keys(),
+                        op.tok,
+                        f"Cannot get size of unknown type `{op.tok.value}`."
+                    )
+                    out.write(
+                        f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+                    out.write(
+                        f"    push    {TypeDict[op.tok.value].Size * 8}\n")
                 elif op.operand == Intrinsic.SYSCALL0:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write(f"    pop     rax\n")  # SYSCALL NUM
@@ -2206,8 +2244,11 @@ if __name__ == "__main__":
     # for i, tok in enumerate(tokens):
     #     print(f"{i} -- {tok.typ}: {tok.value}")
     # print("-------------------------------------------")
-
-    program, fn_meta, reserved_memory = program_from_tokens(tokens)
+    program, fn_meta, reserved_memory = program_from_prelude()
+    program, fn_meta, reserved_memory = program_from_tokens(
+        tokens,
+        program, fn_meta, reserved_memory
+    )
     # print("-------------------------------------------")
     # for ip, op in enumerate(program):
     #     print(f"{ip} -- {op.op}: {op.operand} TokenType: {op.tok.typ}")
