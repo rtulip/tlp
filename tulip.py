@@ -142,6 +142,8 @@ N_SUM_IGNORE = N_DYNAMIC_INTRINSICS + N_IGNORED_OP
 assert len(signatures) == len(OpType) - N_SUM_IGNORE + len(Intrinsic), \
     f"Not all OpTypes and Intrinsics have a signature. Expected {len(OpType) - N_SUM_IGNORE + len(Intrinsic)} Found {len(signatures)}"
 
+PRELUDE_SIZE = 0
+
 
 def compiler_error(predicate: bool, token: Token, msg):
     if not predicate:
@@ -270,8 +272,9 @@ def parse_tokens_until_keywords(
             )
 
             if tok.typ == Intrinsic.CAST_TUPLE:
+                global PRELUDE_SIZE
                 compiler_error(
-                    len(program) > 0,
+                    len(program) > PRELUDE_SIZE,
                     tok,
                     f"`GROUP` expects a preceding `UINT`, but found end of file instead"
                 )
@@ -399,7 +402,7 @@ def eval_const_ops(program: Program, tok: Token) -> Optional[Op]:
                 compiler_error(
                     op.tok.value in TypeDict.keys(),
                     op.tok,
-                    f"Unknown type `{op.tok.value}`."
+                    f"Cannot get size of unknown type `{op.tok.value}`."
                 )
 
                 stack.append(TypeDict[op.tok.value].Size * 8)
@@ -1225,23 +1228,22 @@ def parse_while_block_from_tokens(
 
 def program_from_prelude() -> Tuple[Program, FunctionMeta, MemoryMap]:
     prelude_tokens = tokenize("prelude/prelude.tlp")
-    return program_from_tokens(prelude_tokens)
+    program, fn_meta, reserved_mem = program_from_tokens(prelude_tokens)
+    global PRELUDE_SIZE
+    PRELUDE_SIZE = len(program)
+    return (program, fn_meta, reserved_mem)
 
 
 def program_from_tokens(
     tokens: List[Token],
+    program: Program = [],
+    fn_meta: FunctionMeta = {},
+    reserved_memory: MemoryMap = {},
 ) -> Tuple[Program, FunctionMeta, MemoryMap]:
+
 
     const_values: ConstMap = {}
     tokens.reverse()
-
-    program: Program = []
-    fn_meta: FunctionMeta = {}
-    reserved_memory: MemoryMap = {}
-
-    prelude_tokens = tokenize("prelude/prelude.tlp")
-    prelude_tokens.reverse()
-    tokens += prelude_tokens
 
     expected_keywords: List[Keyword] = [
         Keyword.FN, Keyword.STRUCT, Keyword.CONST]
@@ -2113,9 +2115,13 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                         op_drop_to_asm(out, members[-2].Size)
                         del members[-2]
                 elif op.operand == Intrinsic.SIZE_OF:
+                    compiler_error(
+                        op.tok.value in TypeDict.keys(),
+                        op.tok,
+                        f"Cannot get size of unknown type `{op.tok.value}`."
+                    )
                     out.write(
                         f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
-                    assert op.tok.value in TypeDict.keys()
                     out.write(
                         f"    push    {TypeDict[op.tok.value].Size * 8}\n")
                 elif op.operand == Intrinsic.SYSCALL0:
@@ -2238,10 +2244,10 @@ if __name__ == "__main__":
     # for i, tok in enumerate(tokens):
     #     print(f"{i} -- {tok.typ}: {tok.value}")
     # print("-------------------------------------------")
-    # program, fn_meta, reserved_memory = program_from_prelude()
+    program, fn_meta, reserved_memory = program_from_prelude()
     program, fn_meta, reserved_memory = program_from_tokens(
         tokens,
-        # program, fn_meta, reserved_memory
+        program, fn_meta, reserved_memory
     )
     # print("-------------------------------------------")
     # for ip, op in enumerate(program):

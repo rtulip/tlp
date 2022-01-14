@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/size_of_none.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/size_of_none.tlp:1:1 [ERROR]: Unrecognized WORD SizeOf().
+--------------------------
+exit code: 1
