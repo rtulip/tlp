@@ -1,0 +1,23 @@
+fn !int int ptr -> ptr do 
+    dup push !64 pop cast(int) SizeOf(int) + cast(ptr)
+end
+
+fn @int ptr -> int ptr do
+    cast(int) SizeOf(int) - cast(ptr) dup @64 cast(int) swap
+end
+
+fn !bool int ptr -> ptr do 
+    dup push !64 pop cast(int) SizeOf(bool) + cast(ptr)
+end
+
+fn @bool ptr -> bool ptr do
+    cast(int) SizeOf(bool) - cast(ptr) dup @64 cast(bool) swap
+end
+
+fn !ptr ptr ptr -> ptr do 
+    dup push !64 pop cast(int) SizeOf(ptr) + cast(ptr)
+end
+
+fn @ptr ptr -> ptr ptr do
+    cast(int) SizeOf(ptr) - cast(ptr) dup @64 cast(ptr) swap
+end

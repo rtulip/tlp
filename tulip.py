@@ -121,6 +121,7 @@ signatures = {
     Intrinsic.SPLIT: Signature(pops=[T], puts=lambda List_T: StructMembers[List_T[0]] if List_T[0].Struct else None),
     Intrinsic.RPUSH: Signature(pops=[T], puts=[], rputs=[T]),
     Intrinsic.RPOP: Signature(pops=[], puts=[T], rpops=[T]),
+    Intrinsic.SIZE_OF: Signature(pops=[], puts=[INT]),
     # Intrinsic.CAST creates signatures dynamically based on the struct
     # Intrinsic.INNER_TUPLE creates a signature dynamically based on the tuple on the top of the stack.
     # Intrinsic.CAST_TUPLE  creates signatures dynamically based on the number of elements asked to group
@@ -394,6 +395,14 @@ def eval_const_ops(program: Program, tok: Token) -> Optional[Op]:
                 assert isinstance(a, int)
                 assert isinstance(b, int)
                 stack.append(a << b)
+            elif op.operand == Intrinsic.SIZE_OF:
+                compiler_error(
+                    op.tok.value in TypeDict.keys(),
+                    op.tok,
+                    f"Unknown type `{op.tok.value}`."
+                )
+
+                stack.append(TypeDict[op.tok.value].Size * 8)
             else:
                 compiler_error(
                     False,
@@ -1214,12 +1223,25 @@ def parse_while_block_from_tokens(
     program[do_tok_loc].operand = len(program)
 
 
-def program_from_tokens(tokens: List[Token]) -> Tuple[Program, FunctionMeta, MemoryMap]:
+def program_from_prelude() -> Tuple[Program, FunctionMeta, MemoryMap]:
+    prelude_tokens = tokenize("prelude/prelude.tlp")
+    return program_from_tokens(prelude_tokens)
+
+
+def program_from_tokens(
+    tokens: List[Token],
+) -> Tuple[Program, FunctionMeta, MemoryMap]:
+
+    const_values: ConstMap = {}
+    tokens.reverse()
+
     program: Program = []
     fn_meta: FunctionMeta = {}
-    const_values: ConstMap = {}
     reserved_memory: MemoryMap = {}
-    tokens.reverse()
+
+    prelude_tokens = tokenize("prelude/prelude.tlp")
+    prelude_tokens.reverse()
+    tokens += prelude_tokens
 
     expected_keywords: List[Keyword] = [
         Keyword.FN, Keyword.STRUCT, Keyword.CONST]
@@ -1726,6 +1748,11 @@ def type_check_program(
                                 pops=[INT],
                                 puts=[PTR]
                             )
+                        elif t.Ident == BOOL.Ident:
+                            sig = Signature(
+                                pops=[INT],
+                                puts=[BOOL]
+                            )
                         else:
                             compiler_error(
                                 False,
@@ -2085,7 +2112,12 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                             out, f"{ip}_{i}", members[-2].Size, members[-1].Size)
                         op_drop_to_asm(out, members[-2].Size)
                         del members[-2]
-
+                elif op.operand == Intrinsic.SIZE_OF:
+                    out.write(
+                        f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+                    assert op.tok.value in TypeDict.keys()
+                    out.write(
+                        f"    push    {TypeDict[op.tok.value].Size * 8}\n")
                 elif op.operand == Intrinsic.SYSCALL0:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write(f"    pop     rax\n")  # SYSCALL NUM
@@ -2206,8 +2238,11 @@ if __name__ == "__main__":
     # for i, tok in enumerate(tokens):
     #     print(f"{i} -- {tok.typ}: {tok.value}")
     # print("-------------------------------------------")
-
-    program, fn_meta, reserved_memory = program_from_tokens(tokens)
+    # program, fn_meta, reserved_memory = program_from_prelude()
+    program, fn_meta, reserved_memory = program_from_tokens(
+        tokens,
+        # program, fn_meta, reserved_memory
+    )
     # print("-------------------------------------------")
     # for ip, op in enumerate(program):
     #     print(f"{ip} -- {op.op}: {op.operand} TokenType: {op.tok.typ}")

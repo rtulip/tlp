@@ -62,6 +62,7 @@ class Intrinsic(Enum):
     CAST = 'cast\([a-zA-Z]\w*\)'
     INNER_TUPLE = 'group\.[0-9]+'
     CAST_TUPLE = 'group'
+    SIZE_OF = 'SizeOf\([a-zA-Z]\w*\)'
     SYSCALL0 = 'syscall0'
     SYSCALL1 = 'syscall1'
     SYSCALL2 = 'syscall2'
@@ -182,6 +183,8 @@ def to_value(s: str, tok: TokenType) -> Any:
     elif isinstance(tok, Intrinsic):
         if tok == Intrinsic.CAST:
             return s[5:-1]
+        elif tok == Intrinsic.SIZE_OF:
+            return s[7:-1]
         elif tok == Intrinsic.INNER_TUPLE:
             return int(s[s.find('.')+1:])
         else:
