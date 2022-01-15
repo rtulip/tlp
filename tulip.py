@@ -892,36 +892,35 @@ def parse_struct_from_tokens(
     )
 
     assert isinstance(name_tok.value, str)
-
-    members = []
+    generic: bool = False
+    generics: List[Tuple[str, Token]] = []
+    members: List[Tuple[DataType, Token]] = []
 
     while len(tokens) > 0:
         tok = tokens.pop()
 
-        if tok.typ == Keyword.END:
+        if tok.typ == Keyword.END or tok.typ == Keyword.WITH:
             break
-
         elif tok.typ == MiscTokenKind.WORD:
             assert isinstance(tok.value, str)
-            if tok.value in TypeDict.keys():
-                members.append(TypeDict[tok.value])
+            if tok.value in TypeDict.keys() and not TypeDict[tok.value].Generic:
+                members.append((TypeDict[tok.value], tok))
             else:
-                compiler_error(
-                    False,
-                    tok,
-                    f"Unknown type `{tok.value}` in struct definition"
-                )
+                generic = True
+                members.append((
+                    DataType(Ident=tok.value, Generic=True), tok
+                ))
         else:
             compiler_error(
                 False,
                 tok,
-                f"Unexpected token during struct definition. Expected type identifiers or `END`, but found {tok.typ}:{tok.value} instead"
+                f"Unexpected token in struct definition. Expected type identifiers or `END`, but found {tok.typ}:{tok.value} instead"
             )
 
     compiler_error(
-        tok.typ == Keyword.END,
+        tok.typ in [Keyword.END, Keyword.WITH],
         tok,
-        f"Unclosed struct definition. Expected `END`, but found end of file instead"
+        f"Unclosed struct definition. Expected `END` or `WITH`, but found end of file instead"
     )
 
     compiler_error(
@@ -930,16 +929,62 @@ def parse_struct_from_tokens(
         f"Structs must have at least one member"
     )
 
+    if tok.typ == Keyword.WITH:
+        with_tok = tok
+        while len(tokens) > 0:
+            tok = tokens.pop()
+
+            if tok.typ == Keyword.END:
+                break
+            elif tok.typ == MiscTokenKind.WORD:
+                generics.append(tok.value)
+            else:
+                compiler_error(
+                    False,
+                    tok,
+                    f"Unexpected token during struct generics definition. Expected type identifiers or `END`, but found {tok.typ}:{tok.value} instead"
+                )
+
+        compiler_error(
+            tok.typ == Keyword.END,
+            tok,
+            f"Unclosed struct generics definition. Expected `END`, but found end of file instead"
+        )
+
+        compiler_error(
+            len(generics) > 0,
+            tok,
+            f"Struct Generics must have at least one member"
+        )
+
+        for t, tok in members:
+            if t.Generic:
+                compiler_error(
+                    t.Ident in generics,
+                    tok,
+                    f"Unbounded generic `{t.Ident}` in struct `{name_tok.value}`."
+                )
+        for ident in generics:
+            compiler_error(
+                ident in [t.Ident for t, _ in members],
+                with_tok,
+                f"Unused generic `{ident}`` in struct `{name_tok.value}`"
+            )
+
+    m: List[DataType] = [t for t, _ in members]
+
     new_struct = DataType(
         Ident=name_tok.value,
         Struct=True,
-        Size=sum(member.Size for member in members)
+        Generic=generic,
+        Size=sum(member.Size for member in m)
     )
     TypeDict[new_struct.Ident] = new_struct
-    StructMembers[new_struct] = members
+    StructMembers[new_struct] = m
 
-    generated_tokens = generate_accessor_tokens(start_tok, new_struct, members)
-    tokens += generated_tokens
+    if not generic:
+        generated_tokens = generate_accessor_tokens(start_tok, new_struct, m)
+        tokens += generated_tokens
 
 
 def parse_if_block_from_tokens(
@@ -1622,6 +1667,59 @@ def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType], retur
         return_stack.append(T if not T.Generic else generic_map[T])
 
 
+def generate_concrete_struct(op: Op, type_stack: List[DataType]) -> DataType:
+    assert isinstance(op.operand, Intrinsic)
+    assert op.tok.value in TypeDict.keys()
+    gen_struct = TypeDict[op.tok.value]
+    assert gen_struct in StructMembers.keys()
+
+    gen_members = StructMembers[gen_struct].copy()
+
+    compiler_error(
+        len(type_stack) >= len(gen_members),
+        op.tok,
+        f"""Cannot assign generics during cast, insufficient elements on the stack.
+    Expected: {pretty_print_arg_list(gen_members)}
+    Found:    {pretty_print_arg_list(type_stack)}"""
+    )
+
+    concrete_members: List[DataType] = []
+    generics_map: Dict[str, DataType] = {}
+    generics: List[DataType] = []
+    for i, t in enumerate(gen_members):
+        if t.Generic:
+            concrete_type = type_stack[-len(gen_members) + i]
+            if t.Ident in generics_map.keys():
+                compiler_error(
+                    generics_map[t.Ident] == concrete_type,
+                    op.tok,
+                    f"""Generic Type Resolution Failure.
+    [Note]: Generic `{T.Ident}` was assigned `{generics_map[t.Ident].Ident}` yet `{concrete_type.Ident}` was found
+    [Note]: Signature: {pretty_print_arg_list(gen_members)}
+    [Note]: Stack    : {pretty_print_arg_list(type_stack[-len(gen_members):])}
+    """
+                )
+            else:
+                generics_map[t.Ident] = concrete_type
+                generics.append(concrete_type)
+            concrete_members.append(concrete_type)
+
+        else:
+            concrete_members.append(t)
+
+    concrete_struct_name = f"{gen_struct.Ident}{pretty_print_arg_list(generics)}"
+    if concrete_struct_name not in TypeDict.keys():
+        TypeDict[concrete_struct_name] = DataType(
+            Ident=concrete_struct_name,
+            Struct=True,
+            Size=sum(t.Size for t in concrete_members)
+        )
+
+        StructMembers[TypeDict[concrete_struct_name]] = concrete_members
+
+    return TypeDict[concrete_struct_name]
+
+
 def type_check_program(
     program: Program,
     fn_meta: FunctionMeta,
@@ -1703,13 +1801,18 @@ def type_check_program(
                         op.tok,
                         f"Unrecognized Data Type `{op.tok.value}`"
                     )
+
                     t = TypeDict[op.tok.value]
                     if t.Struct:
                         assert t in StructMembers.keys(), f"{t}"
+                        if t.Generic:
+                            t = generate_concrete_struct(op, type_stack)
+
                         sig = Signature(
                             pops=StructMembers[t].copy(),
                             puts=[t]
                         )
+
                     else:
                         if t.Ident == INT.Ident:
                             sig = Signature(
