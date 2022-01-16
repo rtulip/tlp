@@ -6,6 +6,6 @@ args: ['python3', 'tulip.py', './tests/type_check_errors/fn_output_does_not_matc
     Function `foo` output doesn't match signature.
     [Note]: Expected Output Stack: []
     [Note]: Actual Output Stack  : [int]
-                
+        
 --------------------------
 exit code: 1
