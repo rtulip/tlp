@@ -654,11 +654,10 @@ def parse_fn_from_tokens(
                         )
                     )
                 else:
-                    signature.puts.append(
-                        DataType(
-                            Ident=tok.value,
-                            Generic=True
-                        )
+                    compiler_error(
+                        False,
+                        tok,
+                        "Generic functions aren't supported yet."
                     )
 
         elif tok.typ == Keyword.ARROW:
@@ -1666,6 +1665,11 @@ def generate_concrete_struct(op: Op, type_stack: List[DataType]) -> DataType:
     return TypeDict[concrete_struct_name]
 
 
+def struct_is_instance(T: DataType, S: DataType) -> bool:
+    assert S.Struct
+    return T.Ident.startswith(S.Ident)
+
+
 def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_stack: List[DataType]) -> Signature:
 
     n_args_expected = len(sig.pops)
@@ -1696,6 +1700,19 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
     for i, T in enumerate(sig.pops):
         if T.Generic:
             if not T in generic_map:
+                if T.Struct:
+                    compiler_error(
+                        struct_is_instance(
+                            type_stack[-n_args_expected:][i],
+                            T
+                        ),
+                        op.tok,
+                        f"""
+    Didn't find a matching signature for {op.op}:{op.operand}.
+    Expected: {pretty_print_arg_list(sig.pops)}
+    Found   : {pretty_print_arg_list(type_stack[-len(sig.pops):])}"""
+                    )
+
                 generic_map[T] = type_stack[-n_args_expected:][i]
             else:
                 compiler_error(
