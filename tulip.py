@@ -470,11 +470,23 @@ def parse_with_block_from_tokens(
 ) -> Tuple[Token, List[DataType]]:
     assert start_tok.typ == Keyword.WITH
 
+    compiler_error(
+        len(tokens) > 0,
+        start_tok,
+        "Expected generic type identifiers after `WITH`, but found end of file instead."
+    )
+
     type_list: List[DataType] = []
     end_tok, list_tokens = tokens_until_keywords(
         start_tok,
         tokens,
         [Keyword.STRUCT]
+    )
+
+    compiler_error(
+        len(list_tokens) > 0,
+        start_tok,
+        "`WITH` statement must include at least one generic type identifier."
     )
 
     for tok in list_tokens:
