@@ -1,0 +1,4 @@
+with A
+struct Foo
+    int
+end

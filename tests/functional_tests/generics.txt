@@ -1,0 +1,25 @@
+args: ['python3', 'tulip.py', './tests/functional_tests/generics.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+--------------------------
+exit code: 0
+##########################
+args: ['./output']
+-------- stdout ----------
+420
+35
+34
+420
+35
+34
+123
+False
+Hello World
+123
+False
+Hello World
+--------------------------
+-------- stderr ----------
+--------------------------
+exit code: 0

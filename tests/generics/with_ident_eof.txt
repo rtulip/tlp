@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/generics/with_ident_eof.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/generics/with_ident_eof.tlp:1:1 [ERROR]: Expected one of [<Keyword.STRUCT: 'struct'>], but found end of file instead
+--------------------------
+exit code: 1
