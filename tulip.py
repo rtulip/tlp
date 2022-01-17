@@ -23,23 +23,23 @@ class OpType(Enum):
 
 @dataclass(frozen=True)
 class DataType:
-    Ident: str
-    Generic: bool = False
-    Struct: bool = False
-    Size: int = 1
+    ident: str
+    generic: bool = False
+    struct: bool = False
+    size: int = 1
 
 
 INT = DataType("int")
 BOOL = DataType("bool")
 PTR = DataType("ptr")
-STR = DataType("Str", Struct=True, Size=2)
-T = DataType("T", Generic=True)
-A = DataType("A", Generic=True)
-B = DataType("B", Generic=True)
-C = DataType("C", Generic=True)
-D = DataType("D", Generic=True)
-E = DataType("E", Generic=True)
-F = DataType("F", Generic=True)
+STR = DataType("Str", struct=True, size=2)
+T = DataType("T", generic=True)
+A = DataType("A", generic=True)
+B = DataType("B", generic=True)
+C = DataType("C", generic=True)
+D = DataType("D", generic=True)
+E = DataType("E", generic=True)
+F = DataType("F", generic=True)
 
 TUPLE_IDENT_COUNT = 0
 
@@ -51,6 +51,7 @@ TypeDict: Dict[str, DataType] = {
 
 ArgList = List[DataType]
 StructMembers: Dict[DataType, ArgList] = {}
+StructGenerics: Dict[DataType, ArgList] = {}
 
 
 @ dataclass
@@ -193,6 +194,30 @@ class FnDefState(Enum):
     Outputs = auto()
     Open = auto()
     End = auto()
+
+
+def tokens_until_keywords(
+    start_tok: Token,
+    tokens: List[Token],
+    expected_keywords: List[Keyword]
+) -> Tuple[Token, List[Token]]:
+
+    toks: List[Token] = []
+    while len(tokens) > 0:
+        tok = tokens.pop()
+
+        if tok.typ in expected_keywords:
+            break
+        else:
+            toks.append(tok)
+
+    compiler_error(
+        tok.typ in expected_keywords,
+        start_tok,
+        f"Expected one of {expected_keywords}, but found end of file instead"
+    )
+
+    return (tok, toks)
 
 
 def parse_tokens_until_keywords(
@@ -405,7 +430,7 @@ def eval_const_ops(program: Program, tok: Token) -> Optional[Op]:
                     f"Cannot get size of unknown type `{op.tok.value}`."
                 )
 
-                stack.append(TypeDict[op.tok.value].Size * 8)
+                stack.append(TypeDict[op.tok.value].size * 8)
             else:
                 compiler_error(
                     False,
@@ -437,6 +462,34 @@ def eval_const_ops(program: Program, tok: Token) -> Optional[Op]:
         )
 
     return None
+
+
+def parse_with_block_from_tokens(
+    start_tok: Token,
+    tokens: List[Token],
+) -> Tuple[Token, List[DataType]]:
+    assert start_tok.typ == Keyword.WITH
+
+    type_list: List[DataType] = []
+    end_tok, list_tokens = tokens_until_keywords(
+        start_tok,
+        tokens,
+        [Keyword.STRUCT]
+    )
+
+    for tok in list_tokens:
+        compiler_error(
+            tok.typ == MiscTokenKind.WORD,
+            tok,
+            f"Expected `WORD` in type list, but found {tok.typ}:{tok.value} instead"
+        )
+        assert isinstance(tok.value, str)
+        type_list.append(DataType(
+            ident=tok.value,
+            generic=True
+        ))
+
+    return end_tok, type_list
 
 
 def parse_reserve_statement(
@@ -649,15 +702,15 @@ def parse_fn_from_tokens(
                 if pops:
                     signature.pops.append(
                         DataType(
-                            Ident=tok.value,
-                            Generic=True
+                            ident=tok.value,
+                            generic=True
                         )
                     )
                 else:
                     compiler_error(
                         False,
                         tok,
-                        "Generic functions aren't supported yet."
+                        "generic functions aren't supported yet."
                     )
 
         elif tok.typ == Keyword.ARROW:
@@ -798,10 +851,10 @@ def parse_fn_from_tokens(
 
 
 def generate_read_write_fns(start_tok: Token, new_struct: DataType, members: ArgList) -> List[Token]:
-    assert new_struct.Struct
+    assert new_struct.struct
 
     tokens: List[Token] = []
-    name = new_struct.Ident
+    name = new_struct.ident
     loc = start_tok.loc
 
     tokens += tokenize_string(f"fn !{name} {name} ptr -> ptr do")
@@ -809,7 +862,7 @@ def generate_read_write_fns(start_tok: Token, new_struct: DataType, members: Arg
     m = members.copy()
     while len(m) > 0:
         t = m.pop()
-        tokens += tokenize_string(f"!{t.Ident}")
+        tokens += tokenize_string(f"!{t.ident}")
     tokens += tokenize_string("end")
 
     tokens += tokenize_string(f"fn @{name} ptr -> {name} ptr do")
@@ -817,7 +870,7 @@ def generate_read_write_fns(start_tok: Token, new_struct: DataType, members: Arg
     m.reverse()
     while len(m) > 0:
         t = m.pop()
-        tokens += tokenize_string(f"@{t.Ident}")
+        tokens += tokenize_string(f"@{t.ident}")
     tokens += tokenize_string(f"push cast({name}) pop")
     tokens += tokenize_string("end")
 
@@ -829,15 +882,15 @@ def generate_read_write_fns(start_tok: Token, new_struct: DataType, members: Arg
 
 def generate_accessor_tokens(start_tok: Token, new_struct: DataType, members: ArgList) -> List[Token]:
 
-    assert new_struct.Struct
+    assert new_struct.struct
 
     tokens: List[Token] = []
 
-    name = new_struct.Ident
+    name = new_struct.ident
     loc = start_tok.loc
 
     for i, typ in enumerate(members):
-        tokens += tokenize_string(f"fn {name}.{i} {name} -> {typ.Ident} do")
+        tokens += tokenize_string(f"fn {name}.{i} {name} -> {typ.ident} do")
         tokens += tokenize_string(f"split")
         for _ in range(i, len(members)-1):
             tokens += tokenize_string("drop")
@@ -859,6 +912,7 @@ def generate_accessor_tokens(start_tok: Token, new_struct: DataType, members: Ar
 def parse_struct_from_tokens(
     start_tok: Token,
     tokens: List[Token],
+    generic_types: List[DataType],
     fn_meta: FunctionMeta,
     const_values: ConstMap,
     reserved_memory: MemoryMap,
@@ -892,107 +946,73 @@ def parse_struct_from_tokens(
         f"Expected struct body, but found end of file instead"
     )
 
+    compiler_error(
+        len(generic_types) == len(set(generic_types)),
+        start_tok,
+        f"Generic identifiers must be unique in struct definition"
+    )
+
     assert isinstance(name_tok.value, str)
-    generic: bool = False
-    generics: List[Tuple[str, Token]] = []
-    members: List[Tuple[DataType, Token]] = []
 
-    while len(tokens) > 0:
-        tok = tokens.pop()
+    end_tok, member_tokens = tokens_until_keywords(
+        name_tok, tokens, [Keyword.END]
+    )
 
-        if tok.typ == Keyword.END or tok.typ == Keyword.WITH:
-            break
-        elif tok.typ == MiscTokenKind.WORD:
-            assert isinstance(tok.value, str)
-            if tok.value in TypeDict.keys() and not TypeDict[tok.value].Generic:
-                members.append((TypeDict[tok.value], tok))
-            else:
-                generic = True
-                members.append((
-                    DataType(Ident=tok.value, Generic=True), tok
-                ))
-        else:
-            compiler_error(
-                False,
-                tok,
-                f"Unexpected token in struct definition. Expected type identifiers or `END`, but found {tok.typ}:{tok.value} instead"
+    compiler_error(
+        len(member_tokens) > 0,
+        end_tok,
+        "Structs must have at least one member"
+    )
+
+    members: List[DataType] = []
+    for tok in member_tokens:
+        compiler_error(
+            tok.typ == MiscTokenKind.WORD,
+            tok,
+            f"Expected `WORD` in Struct `{name_tok.value}` member list. Found {tok.typ}:{tok.value} instead"
+        )
+
+        assert isinstance(tok.value, str)
+        compiler_error(
+            tok.value in TypeDict.keys() or
+            tok.value in [T.ident for T in generic_types],
+            tok,
+            f"""Unrecognized type in `Struct` definition: `{tok.value}`
+    [Note]: You may want to include `{tok.value}` in a `WITH` block before struct definition."""
+        )
+
+        if tok.value in TypeDict.keys():
+            members.append(
+                TypeDict[tok.value]
+            )
+        elif tok.value in [T.ident for T in generic_types]:
+            members.append(
+                [T for T in generic_types if T.ident == tok.value][0]
             )
 
-    compiler_error(
-        tok.typ in [Keyword.END, Keyword.WITH],
-        tok,
-        f"Unclosed struct definition. Expected `END` or `WITH`, but found end of file instead"
-    )
-
-    compiler_error(
-        len(members) > 0,
-        tok,
-        f"Structs must have at least one member"
-    )
-
-    if generic:
+    for T in generic_types:
         compiler_error(
-            tok.typ == Keyword.WITH,
+            T in members,
             start_tok,
-            "Structs with generic members must have a `WITH` block."
+            f"""Unused generic identifier `{T.ident}`.
+    [Note]: Consider removing it from the `WITH` statement above"""
         )
-
-    if tok.typ == Keyword.WITH:
-        with_tok = tok
-        while len(tokens) > 0:
-            tok = tokens.pop()
-
-            if tok.typ == Keyword.END:
-                break
-            elif tok.typ == MiscTokenKind.WORD:
-                generics.append(tok.value)
-            else:
-                compiler_error(
-                    False,
-                    tok,
-                    f"Unexpected token during struct generics definition. Expected type identifiers or `END`, but found {tok.typ}:{tok.value} instead"
-                )
-
-        compiler_error(
-            tok.typ == Keyword.END,
-            tok,
-            f"Unclosed struct generics definition. Expected `END`, but found end of file instead"
-        )
-
-        compiler_error(
-            len(generics) > 0,
-            tok,
-            f"Struct Generics must have at least one member"
-        )
-
-        for t, tok in members:
-            if t.Generic:
-                compiler_error(
-                    t.Ident in generics,
-                    tok,
-                    f"Unbounded generic `{t.Ident}` in struct `{name_tok.value}`."
-                )
-        for ident in generics:
-            compiler_error(
-                ident in [t.Ident for t, _ in members],
-                with_tok,
-                f"Unused generic `{ident}`` in struct `{name_tok.value}`"
-            )
-
-    m: List[DataType] = [t for t, _ in members]
 
     new_struct = DataType(
-        Ident=name_tok.value,
-        Struct=True,
-        Generic=generic,
-        Size=sum(member.Size for member in m)
+        ident=name_tok.value,
+        struct=True,
+        generic=len(generic_types) > 1,
+        size=sum(member.size for member in members)
     )
-    TypeDict[new_struct.Ident] = new_struct
-    StructMembers[new_struct] = m
+    TypeDict[new_struct.ident] = new_struct
+    StructMembers[new_struct] = members
 
-    if not generic:
-        generated_tokens = generate_accessor_tokens(start_tok, new_struct, m)
+    if len(generic_types) == 0:
+        generated_tokens = generate_accessor_tokens(
+            start_tok, new_struct, members)
         tokens += generated_tokens
+    else:
+        StructGenerics[new_struct] = generic_types
 
 
 def parse_if_block_from_tokens(
@@ -1271,7 +1291,11 @@ def program_from_tokens(
     tokens.reverse()
 
     expected_keywords: List[Keyword] = [
-        Keyword.FN, Keyword.STRUCT, Keyword.CONST]
+        Keyword.WITH,
+        Keyword.FN,
+        Keyword.STRUCT,
+        Keyword.CONST
+    ]
 
     while len(tokens) > 0:
 
@@ -1286,7 +1310,14 @@ def program_from_tokens(
 
         assert isinstance(tok, Token)
         assert len(
-            expected_keywords) == 3, "Exhaustive handling of expected keywords"
+            expected_keywords) == 4, "Exhaustive handling of expected keywords"
+
+        generic_types: List[DataType] = []
+        if tok.typ == Keyword.WITH:
+            tok, generic_types = parse_with_block_from_tokens(
+                tok,
+                tokens,
+            )
 
         if tok.typ == Keyword.FN:
             parse_fn_from_tokens(
@@ -1301,6 +1332,7 @@ def program_from_tokens(
             parse_struct_from_tokens(
                 tok,
                 tokens,
+                generic_types,
                 fn_meta,
                 const_values,
                 reserved_memory
@@ -1443,9 +1475,9 @@ def type_check_cond_jump(
 def pretty_print_arg_list(arg_list: List[DataType]) -> str:
     s = "["
     for t in arg_list[:-1]:
-        s += f"{t.Ident} "
+        s += f"{t.ident} "
     if len(arg_list) > 0:
-        s += f"{arg_list[-1].Ident}"
+        s += f"{arg_list[-1].ident}"
     s += "]"
     return s
 
@@ -1548,34 +1580,34 @@ def assign_sizes(op: Op, sig: Signature):
     if op.operand == Intrinsic.DUP:
         assert len(sig.pops) == 1
         assert op.tok.value == None, f"{op.tok.loc} -- {op.op}:{op.operand} - {op.tok.value}"
-        op.tok.value = sig.pops[0].Size
+        op.tok.value = sig.pops[0].size
     elif op.operand == Intrinsic.SWAP:
         assert len(sig.pops) == 2
         assert op.tok.value == None
-        op.tok.value = (sig.pops[0].Size, sig.pops[1].Size)
+        op.tok.value = (sig.pops[0].size, sig.pops[1].size)
     elif op.operand == Intrinsic.DROP:
         assert len(sig.pops) == 1
         assert op.tok.value == None
-        op.tok.value = sig.pops[0].Size
+        op.tok.value = sig.pops[0].size
     elif op.operand == Intrinsic.RPUSH:
         assert len(sig.pops) == 1
         assert op.tok.value == None
-        op.tok.value = sig.pops[0].Size
+        op.tok.value = sig.pops[0].size
     if op.operand == Intrinsic.RPOP:
         assert len(sig.rpops) == 1
         assert op.tok.value == None
-        op.tok.value = sig.rpops[0].Size
+        op.tok.value = sig.rpops[0].size
 
 
 def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType], return_stack: List[DataType]):
 
-    assert True if len(sig.pops) == 0 else [not T.Generic for T in sig.pops], \
+    assert True if len(sig.pops) == 0 else [not T.generic for T in sig.pops], \
         f"{op.op}:{op.operand} Expected non-generic signature. Pops {pretty_print_arg_list(sig.pops)}"
-    assert True if len(sig.puts) == 0 else [not T.Generic for T in sig.puts], \
+    assert True if len(sig.puts) == 0 else [not T.generic for T in sig.puts], \
         f"{op.op}:{op.operand} Expected non-generic signature. Puts {pretty_print_arg_list(sig.puts)}"
-    assert True if len(sig.rpops) == 0 else [not T.Generic for T in sig.rpops], \
+    assert True if len(sig.rpops) == 0 else [not T.generic for T in sig.rpops], \
         f"{op.op}:{op.operand} Expected non-generic signature. Rpops {pretty_print_arg_list(sig.rpops)}"
-    assert True if len(sig.rputs) == 0 else [not T.Generic for T in sig.rputs], \
+    assert True if len(sig.rputs) == 0 else [not T.generic for T in sig.rputs], \
         f"{op.op}:{op.operand} Expected non-generic signature. Rputs {pretty_print_arg_list(sig.rputs)}"
 
     assign_sizes(op, sig)
@@ -1616,48 +1648,48 @@ def generate_concrete_struct(op: Op, type_stack: List[DataType]) -> DataType:
     assert isinstance(op.operand, Intrinsic)
     assert op.tok.value in TypeDict.keys()
     gen_struct = TypeDict[op.tok.value]
+    assert gen_struct in StructGenerics.keys()
     assert gen_struct in StructMembers.keys()
 
-    gen_members = StructMembers[gen_struct].copy()
+    generics = StructGenerics[gen_struct]
+    members = StructMembers[gen_struct]
 
     compiler_error(
-        len(type_stack) >= len(gen_members),
+        len(type_stack) >= len(members),
         op.tok,
         f"""Cannot assign generics during cast, insufficient elements on the stack.
-    Expected: {pretty_print_arg_list(gen_members)}
-    Found:    {pretty_print_arg_list(type_stack)}"""
+    [Note]: Expected: {pretty_print_arg_list(members)}
+    [Note]: Found:    {pretty_print_arg_list(type_stack)}"""
     )
 
     concrete_members: List[DataType] = []
-    generics_map: Dict[str, DataType] = {}
-    generics: List[DataType] = []
-    for i, t in enumerate(gen_members):
-        if t.Generic:
-            concrete_type = type_stack[-len(gen_members) + i]
-            if t.Ident in generics_map.keys():
+    generic_map: Dict[DataType, DataType] = {}
+    for i, t in enumerate(members):
+        if t.generic:
+            assert t in generics
+            concrete_type = type_stack[-len(members) + i]
+            if t in generic_map.keys():
                 compiler_error(
-                    generics_map[t.Ident] == concrete_type,
+                    generic_map[t] == concrete_type,
                     op.tok,
                     f"""Generic Type Resolution Failure.
-    [Note]: Generic `{T.Ident}` was assigned `{generics_map[t.Ident].Ident}` yet `{concrete_type.Ident}` was found
-    [Note]: Signature: {pretty_print_arg_list(gen_members)}
-    [Note]: Stack    : {pretty_print_arg_list(type_stack[-len(gen_members):])}
+    [Note]: Generic `{T.ident}` was assigned `{generic_map[t].ident}` yet `{concrete_type.ident}` was found
+    [Note]: Signature: {pretty_print_arg_list(members)}
+    [Note]: Stack    : {pretty_print_arg_list(type_stack[-len(members):])}
     """
                 )
             else:
-                generics_map[t.Ident] = concrete_type
-                generics.append(concrete_type)
+                generic_map[t] = concrete_type
             concrete_members.append(concrete_type)
-
         else:
             concrete_members.append(t)
 
-    concrete_struct_name = f"{gen_struct.Ident}{pretty_print_arg_list(generics)}"
+    concrete_struct_name = f"{gen_struct.ident}{pretty_print_arg_list(list(generic_map.values()))}"
     if concrete_struct_name not in TypeDict.keys():
         TypeDict[concrete_struct_name] = DataType(
-            Ident=concrete_struct_name,
-            Struct=True,
-            Size=sum(t.Size for t in concrete_members)
+            ident=concrete_struct_name,
+            struct=True,
+            size=sum(t.size for t in concrete_members)
         )
 
         StructMembers[TypeDict[concrete_struct_name]] = concrete_members
@@ -1666,8 +1698,8 @@ def generate_concrete_struct(op: Op, type_stack: List[DataType]) -> DataType:
 
 
 def struct_is_instance(T: DataType, S: DataType) -> bool:
-    assert S.Struct
-    return T.Ident.startswith(S.Ident)
+    assert S.struct
+    return T.ident.startswith(S.ident)
 
 
 def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_stack: List[DataType]) -> Signature:
@@ -1698,9 +1730,9 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
     generic_map: Dict[DataType, DataType] = {}
 
     for i, T in enumerate(sig.pops):
-        if T.Generic:
+        if T.generic:
             if not T in generic_map:
-                if T.Struct:
+                if T.struct:
                     compiler_error(
                         struct_is_instance(
                             type_stack[-n_args_expected:][i],
@@ -1720,14 +1752,14 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
                     op.tok,
                     f"""
     Generic Type Resolution Failure.
-    [Note]: Generic `{T.Ident}` was assigned `{generic_map[T].Ident}` yet `{type_stack[-n_args_expected:][i].Ident}` was found
+    [Note]: Generic `{T.ident}` was assigned `{generic_map[T].ident}` yet `{type_stack[-n_args_expected:][i].ident}` was found
     [Note]: Signature: {pretty_print_arg_list(sig.pops)}
     [Note]: Stack    : {pretty_print_arg_list(type_stack[-n_args_expected:])}
                     """
                 )
 
     for i, T in enumerate(sig.rpops):
-        if T.Generic:
+        if T.generic:
             if not T in generic_map:
                 generic_map[T] = return_stack[-n_rargs_expected:][i]
             else:
@@ -1736,7 +1768,7 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
                     op.tok,
                     f"""
     Generic Type Resolution Failure.
-    [Note]: Generic `{T.Ident}` was assigned `{generic_map[T].Ident}` yet `{return_stack[-n_rargs_expected:][i].Ident}` was found
+    [Note]: Generic `{T.ident}` was assigned `{generic_map[T].ident}` yet `{return_stack[-n_rargs_expected:][i].ident}` was found
     [Note]: Signature: {pretty_print_arg_list(sig.rpops)}
     [Note]: Stack    : {pretty_print_arg_list(return_stack[-n_rargs_expected:])}
                     """
@@ -1744,16 +1776,16 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
 
     for T in sig.pops:
         compiler_error(
-            not T.Generic or T in generic_map.keys(),
+            not T.generic or T in generic_map.keys(),
             op.tok,
-            f"Undefined generic `{T.Ident}`"
+            f"Undefined generic `{T.ident}`"
         )
 
     new_sig = Signature(
-        pops=[T if not T.Generic else generic_map[T] for T in sig.pops],
-        puts=[T if not T.Generic else generic_map[T] for T in sig.puts],
-        rpops=[T if not T.Generic else generic_map[T] for T in sig.rpops],
-        rputs=[T if not T.Generic else generic_map[T] for T in sig.rputs],
+        pops=[T if not T.generic else generic_map[T] for T in sig.pops],
+        puts=[T if not T.generic else generic_map[T] for T in sig.puts],
+        rpops=[T if not T.generic else generic_map[T] for T in sig.rpops],
+        rputs=[T if not T.generic else generic_map[T] for T in sig.rputs],
     )
     return new_sig
 
@@ -1886,16 +1918,16 @@ def type_check_program(
                     )
 
                     t = TypeDict[op.tok.value]
-                    if t.Struct:
+                    if t.struct:
                         assert t in StructMembers.keys(), f"{t}"
-                        if t.Generic:
+                        if t.generic:
                             t = generate_concrete_struct(op, type_stack)
                         sig = Signature(
                             pops=StructMembers[t].copy(),
                             puts=[t]
                         )
                     else:
-                        if t.Ident == INT.Ident:
+                        if t.ident == INT.ident:
                             if len(type_stack) > 0:
                                 compiler_error(
                                     type_stack[-1] in [INT, BOOL, PTR],
@@ -1907,12 +1939,12 @@ def type_check_program(
                                 pops=[T],
                                 puts=[INT]
                             )
-                        elif t.Ident == PTR.Ident:
+                        elif t.ident == PTR.ident:
                             sig = Signature(
                                 pops=[INT],
                                 puts=[PTR]
                             )
-                        elif t.Ident == BOOL.Ident:
+                        elif t.ident == BOOL.ident:
                             sig = Signature(
                                 pops=[INT],
                                 puts=[BOOL]
@@ -1921,7 +1953,7 @@ def type_check_program(
                             compiler_error(
                                 False,
                                 op.tok,
-                                f"Cannot cast to built in type {t.Ident}"
+                                f"Cannot cast to built in type {t.ident}"
                             )
                 elif op.tok.typ == Intrinsic.CAST_TUPLE:
                     global TUPLE_IDENT_COUNT
@@ -1938,18 +1970,18 @@ def type_check_program(
                     tuple_size = 0
                     members = type_stack[-n:].copy()
                     for t in members:
-                        tuple_size += t.Size
+                        tuple_size += t.size
 
                     tuple = DataType(
-                        Ident=f"AnonStruct_{TUPLE_IDENT_COUNT}_{n}",
-                        Struct=True,
-                        Size=tuple_size
+                        ident=f"Anonstruct_{TUPLE_IDENT_COUNT}_{n}",
+                        struct=True,
+                        size=tuple_size
                     )
 
-                    assert tuple.Ident not in TypeDict
+                    assert tuple.ident not in TypeDict
                     assert tuple not in StructMembers
 
-                    TypeDict[tuple.Ident] = tuple
+                    TypeDict[tuple.ident] = tuple
                     StructMembers[tuple] = members
 
                     sig = Signature(
@@ -1969,9 +2001,9 @@ def type_check_program(
                     t = type_stack[-1]
 
                     compiler_error(
-                        t.Ident.startswith("AnonStruct_"),
+                        t.ident.startswith("Anonstruct_"),
                         op.tok,
-                        f"Expected to find an `GROUP` on the top of the stack. Found {t.Ident} instead"
+                        f"Expected to find an `GROUP` on the top of the stack. Found {t.ident} instead"
                     )
 
                     assert t in StructMembers.keys()
@@ -1998,9 +2030,9 @@ def type_check_program(
                     t = type_stack[-1]
 
                     compiler_error(
-                        t.Struct,
+                        t.struct,
                         op.tok,
-                        f"{op.op}:{op.operand} expects a `Struct` on the top of the stack. Found an `{t.Ident}` instead"
+                        f"{op.op}:{op.operand} expects a `Struct` on the top of the stack. Found an `{t.ident}` instead"
                     )
 
                     assert t in StructMembers.keys()
@@ -2013,9 +2045,6 @@ def type_check_program(
 
             elif op.op == OpType.CALL:
                 assert isinstance(op.operand, str)
-                if any(t.Generic for t in fn_meta[op.operand].signature.pops):
-                    generate_concrete_function(
-                        op, type_stack, fn_meta, program)
                 sig = fn_meta[op.operand].signature
             else:
                 sig = signatures[op.op]
@@ -2290,13 +2319,13 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
 
                     for i in range(index, len(members)-1):
                         out.write(f";; Drop\n")
-                        op_drop_to_asm(out, members.pop().Size)
+                        op_drop_to_asm(out, members.pop().size)
 
                     for i in range(index):
                         out.write(f";; SWAP DROP {i}\n")
                         op_swap_to_asm(
-                            out, f"{ip}_{i}", members[-2].Size, members[-1].Size)
-                        op_drop_to_asm(out, members[-2].Size)
+                            out, f"{ip}_{i}", members[-2].size, members[-1].size)
+                        op_drop_to_asm(out, members[-2].size)
                         del members[-2]
                 elif op.operand == Intrinsic.SIZE_OF:
                     compiler_error(
@@ -2307,7 +2336,7 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
                     out.write(
                         f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
                     out.write(
-                        f"    push    {TypeDict[op.tok.value].Size * 8}\n")
+                        f"    push    {TypeDict[op.tok.value].size * 8}\n")
                 elif op.operand == Intrinsic.SYSCALL0:
                     out.write(f";; --- {op.op} {op.operand} --- \n")
                     out.write(f"    pop     rax\n")  # SYSCALL NUM

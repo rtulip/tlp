@@ -2,6 +2,7 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/struct_unknown_type_in_bo
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/struct_unknown_type_in_body.tlp:1:1 [ERROR]: Structs with generic members must have a `WITH` block.
+./tests/compiler_errors/struct_unknown_type_in_body.tlp:1:12 [ERROR]: Unrecognized type in `Struct` definition: `bar`
+    [Note]: You may want to include `bar` in a `WITH` block before struct definition.
 --------------------------
 exit code: 1
