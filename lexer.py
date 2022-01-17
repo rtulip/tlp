@@ -25,6 +25,7 @@ class Keyword(Enum):
     INCLUDE = 'use'
     CONST = 'const'
     RESERVE = 'reserve'
+    WITH = 'with'
 
 
 """Intrinsics
