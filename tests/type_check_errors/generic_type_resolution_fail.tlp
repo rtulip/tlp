@@ -1,6 +1,6 @@
 with T
-fn foo T T do 
-    drop drop
+struct foo 
+    T T
 end
 
-1 true foo
+1 true cast(foo)

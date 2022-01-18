@@ -2,25 +2,28 @@ use "std.tlp"
 
 with A B
 struct Foo
-    A B int
+    A B
 end
 
-34 35 420 cast(Foo) dup
-split putu putu putu
-split putu putu putu
+with T
+fn bar
+    T
+do
+    cast(int) putu   
+end
 
 // with T
-// fn use_foo
-//     with T T -> Foo
+// fn baz
+//     with T -> Foo
+//     ->
+//     with T -> Foo
+//     with T -> Foo
 // do
-//     drop
+//     dup
 // end
 
-// 34 35 cast(Foo)
-// with int do use_foo
+5 cast(ptr) 
+with ptr do bar
+10 with int do bar
+true with bool do bar
 
-"Hello World\n" false 123 cast(Foo) dup 
-split putu putb "\n" puts puts
-split putu putb "\n" puts puts
-// //with Str use_foo
-    

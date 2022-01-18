@@ -77,6 +77,7 @@ Program = List[Op]
 class Function:
     ident: str
     tok: Token
+    generics: ArgList
     signature: Signature
     stub: bool
     program: Program
@@ -265,6 +266,14 @@ def parse_tokens_until_keywords(
             elif tok.typ == MiscTokenKind.WORD:
 
                 if tok.value in fn_meta.keys():
+
+                    compiler_error(
+                        len(fn_meta[tok.value].generics) == 0,
+                        tok,
+                        f"""Cannot call generic function `{tok.value}` without casting types first.
+    [Note]: Use a `WITH`-`DO` block to declare types.
+    [Note]: Undefined generics: {pretty_print_arg_list(fn_meta[tok.value].generics)}"""
+                    )
 
                     program.append(Op(
                         op=OpType.CALL,
@@ -492,7 +501,7 @@ def parse_with_block_from_tokens(
     end_tok, list_tokens = tokens_until_keywords(
         start_tok,
         tokens,
-        [Keyword.STRUCT, Keyword.FN]
+        [Keyword.STRUCT, Keyword.FN, Keyword.DO]
     )
 
     compiler_error(
@@ -507,10 +516,13 @@ def parse_with_block_from_tokens(
             tok,
             f"Expected `WORD` in type list, but found {tok.typ}:{tok.value} instead"
         )
+        generic = True
+        if tok.value in TypeDict and not TypeDict[tok.value].generic:
+            generic = False
         assert isinstance(tok.value, str)
         type_list.append(DataType(
             ident=tok.value,
-            generic=True
+            generic=generic
         ))
 
     return end_tok, type_list
@@ -731,6 +743,77 @@ def parse_fn_signature(
     return tok, Signature(pops, puts)
 
 
+def call_generic_fn_with(start_tok: Token, tokens: List[Token], concrete_types: List[DataType], program: Program):
+    fn_tok = tokens.pop()
+
+    compiler_error(
+        fn_tok.typ == MiscTokenKind.WORD,
+        fn_tok,
+        f"Expected a function name after `WITH`-`DO` block, but found `{fn_tok.typ}:{fn_tok.value}` instead."
+    )
+    fn_name = fn_tok.value
+    assert isinstance(fn_name, str)
+
+    compiler_error(
+        fn_name in fn_meta.keys(),
+        fn_tok,
+        f"Unkonwn function `{fn_name}`."
+    )
+
+    compiler_error(
+        len(fn_meta[fn_name].generics) > 0,
+        fn_tok,
+        f"Cannot assign generics to non-generic function `{fn_name}`"
+    )
+
+    compiler_error(
+        not fn_meta[fn_name].stub,
+        fn_tok,
+        f"Cannot call a function stub."
+    )
+
+    compiler_error(
+        len(fn_meta[fn_name].generics) == len(concrete_types),
+        fn_tok,
+        f"""Invalid number of types for generic assignment.
+    [Note]: Function `{fn_name}` is generic over {pretty_print_arg_list(fn_meta[fn_name].generics)}
+    [Note]: The following types were provided: {pretty_print_arg_list(concrete_types)}"""
+    )
+
+    compiler_error(
+        not any(T.generic for T in concrete_types),
+        fn_tok,
+        f"""Calling generic functions requires providing concrete types.
+    [Note]: The following types are generic: {pretty_print_arg_list([T for T in concrete_types if T.generic])}"""
+    )
+
+    concrete_name = f"{fn_name}{pretty_print_arg_list(concrete_types, '<', '>')}"
+    if concrete_name not in fn_meta.keys():
+        sig = fn_meta[fn_name].signature
+        generics = fn_meta[fn_name].generics
+        pops = [T if not T.generic else concrete_types[indexOf(
+            generics, T)] for T in sig.pops]
+        puts = [T if not T.generic else concrete_types[indexOf(
+            generics, T)] for T in sig.puts]
+
+        concrete_sig = Signature(pops, puts)
+
+        fn_meta[concrete_name] = Function(
+            concrete_name,
+            deepcopy(fn_meta[fn_name].tok),
+            generics=[],
+            signature=concrete_sig,
+            stub=False,
+            program=deepcopy(fn_meta[fn_name].program)
+        )
+
+    program.append(Op(
+        OpType.CALL,
+        fn_tok,
+        operand=concrete_name
+    ))
+
+
 def parse_fn_from_tokens(
     start_tok: Token,
     tokens: List[Token],
@@ -805,6 +888,7 @@ def parse_fn_from_tokens(
     fn_meta[fn_name] = Function(
         fn_name,
         start_tok,
+        generic_types,
         signature,
         stub=tok.typ == Keyword.END,
         program=program
@@ -1314,9 +1398,9 @@ def program_from_tokens(
         assert len(
             expected_keywords) == 4, "Exhaustive handling of expected keywords"
 
-        generic_types: List[DataType] = []
+        types: List[DataType] = []
         if tok.typ == Keyword.WITH:
-            tok, generic_types = parse_with_block_from_tokens(
+            tok, types = parse_with_block_from_tokens(
                 tok,
                 tokens,
             )
@@ -1325,7 +1409,7 @@ def program_from_tokens(
             parse_fn_from_tokens(
                 tok,
                 tokens,
-                generic_types,
+                types,
                 fn_meta,
                 const_values,
                 reserved_memory
@@ -1334,7 +1418,7 @@ def program_from_tokens(
             parse_struct_from_tokens(
                 tok,
                 tokens,
-                generic_types,
+                types,
                 fn_meta,
                 const_values,
                 reserved_memory
@@ -1347,6 +1431,8 @@ def program_from_tokens(
                 const_values,
                 reserved_memory
             )
+        elif tok.typ == Keyword.DO and len(types) > 0:
+            call_generic_fn_with(tok, tokens, types, program)
         elif len(tokens) == 0:
             break
         else:
@@ -1469,13 +1555,13 @@ def type_check_cond_jump(
         assert False, f"Well this was unexpected... {end_ip} vs {false_path_ip} {program[false_path_ip].op}:{program[false_path_ip].operand}"
 
 
-def pretty_print_arg_list(arg_list: List[DataType]) -> str:
-    s = "["
+def pretty_print_arg_list(arg_list: List[DataType], open="[", close="]") -> str:
+    s = open
     for t in arg_list[:-1]:
         s += f"{t.ident} "
     if len(arg_list) > 0:
         s += f"{arg_list[-1].ident}"
-    s += "]"
+    s += close
     return s
 
 
@@ -1787,7 +1873,7 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
     return new_sig
 
 
-def generate_concrete_function(op: Op, type_stack: List[DataType], fn_meta: FunctionMeta, program: Program):
+def generate_concrete_function(op: Op, type_stack: List[DataType], fn_meta: FunctionMeta):
 
     fn_name = op.tok.value
     gen_sig = fn_meta[fn_name].signature
@@ -1797,6 +1883,7 @@ def generate_concrete_function(op: Op, type_stack: List[DataType], fn_meta: Func
     concrete_fn = Function(
         ident=name,
         signature=sig,
+        generics=[],
         tok=deepcopy(fn_meta[fn_name].tok),
         stub=False,
         program=deepcopy(fn_meta[fn_name].program)
@@ -1858,6 +1945,8 @@ def type_check_program(
 
     if not skip_fn_eval:
         for fn in fn_meta.values():
+            if len(fn.generics) != 0:
+                continue
             type_check_fn(fn, fn_meta)
     while ip < len(program):
         op = program[ip]
@@ -1910,7 +1999,7 @@ def type_check_program(
                                 compiler_error(
                                     type_stack[-1] in [INT, BOOL, PTR],
                                     op.tok,
-                                    f"Only `INT`, `BOOl`, and `PTR` types can be cast to int"
+                                    f"Only `INT`, `BOOl`, and `PTR` types can be cast to int. Found `{type_stack[-1]}`"
                                 )
 
                             sig = Signature(
@@ -2417,6 +2506,9 @@ def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, rese
         out.write(
             f";; ---------------------- FUNCTIONS -------------------------\n")
         for i, fn in enumerate(fn_meta.values()):
+            if len(fn.generics) != 0:
+                continue
+
             out.write(f"fn_{i}:  ;; --- {fn.ident} ---\n")
             out.write(f"    mov     [ret_stack_rsp], rsp\n")
             out.write(f"    mov     rsp, rax\n")
