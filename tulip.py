@@ -497,33 +497,14 @@ def parse_with_block_from_tokens(
         "Expected generic type identifiers after `WITH`, but found end of file instead."
     )
 
-    type_list: List[DataType] = []
-    end_tok, list_tokens = tokens_until_keywords(
-        start_tok,
-        tokens,
-        [Keyword.STRUCT, Keyword.FN, Keyword.DO]
-    )
+    end_tok, type_list = parse_type_list(
+        start_tok, tokens, [], [Keyword.STRUCT, Keyword.FN, Keyword.DO], allow_undefined_generics=True)
 
     compiler_error(
-        len(list_tokens) > 0,
+        len(type_list) > 0,
         start_tok,
         "`WITH` statement must include at least one generic type identifier."
     )
-
-    for tok in list_tokens:
-        compiler_error(
-            tok.typ == MiscTokenKind.WORD,
-            tok,
-            f"Expected `WORD` in type list, but found {tok.typ}:{tok.value} instead"
-        )
-        generic = True
-        if tok.value in TypeDict and not TypeDict[tok.value].generic:
-            generic = False
-        assert isinstance(tok.value, str)
-        type_list.append(DataType(
-            ident=tok.value,
-            generic=generic
-        ))
 
     return end_tok, type_list
 
@@ -678,11 +659,74 @@ def parse_include_statement(start_tok: Token, tokens: List[Token], program: Prog
         IncludedFiles.append(include_str)
 
 
+def parse_with_struct_as_type(start_tok: Token, tokens: List[Token], generic_types: List[DataType]) -> DataType:
+    tok, type_list = parse_type_list(
+        start_tok, tokens, generic_types, [Keyword.ARROW])
+
+    compiler_error(
+        len(tokens) > 0,
+        tok,
+        "Expected struct name, but found end of file instead."
+    )
+
+    struct_tok = tokens.pop()
+    compiler_error(
+        struct_tok.typ == MiscTokenKind.WORD,
+        struct_tok,
+        f"Expected struct name, but found `{struct_tok.typ}:{struct_tok.value}` instead."
+    )
+
+    struct_name = struct_tok.value
+    assert struct_name is not None
+    compiler_error(
+        struct_name in TypeDict.keys(),
+        struct_tok,
+        f"Unknown struct `{struct_name}`."
+    )
+
+    compiler_error(
+        TypeDict[struct_name].struct,
+        struct_tok,
+        f"Type `{struct_name}` is not a struct."
+    )
+
+    gen_struct_t = TypeDict[struct_name]
+    compiler_error(
+        gen_struct_t in StructGenerics.keys(),
+        struct_tok,
+        f"Struct `{struct_name}` is not generic."
+    )
+
+    compiler_error(
+        len(type_list) == len(StructGenerics[gen_struct_t]),
+        struct_tok,
+        f"""Incorrect number of types provided.
+    [Note]: `{struct_name}` is generic over {pretty_print_arg_list(StructGenerics[gen_struct_t])}
+    [Note]: These types were provided: {pretty_print_arg_list(type_list)}"""
+    )
+
+    concrete_name = f"{struct_name}{pretty_print_arg_list(type_list, open='<', close='>')}"
+    concrete_members = [T if not T.generic else
+                        type_list[indexOf(StructGenerics[gen_struct_t], T)] for T in StructMembers[gen_struct_t]]
+
+    TypeDict[concrete_name] = DataType(
+        ident=concrete_name,
+        generic=any([T.generic for T in concrete_members]),
+        struct=True,
+        size=sum([T.size for T in concrete_members])
+    )
+    StructMembers[TypeDict[concrete_name]] = concrete_members
+    StructGenerics[TypeDict[concrete_name]] = generic_types
+
+    return TypeDict[concrete_name]
+
+
 def parse_type_list(
     start_tok: Token,
     tokens: List[Token],
     generic_types: List[DataType],
-    delimiters=List[Keyword]
+    delimiters=List[Keyword],
+    allow_undefined_generics=False,
 ) -> Tuple[Token, List[DataType]]:
 
     compiler_error(
@@ -691,21 +735,34 @@ def parse_type_list(
         f"Expected type list, but found end of file instead"
     )
 
-    end_tok, input_tokens = tokens_until_keywords(
-        start_tok, tokens, delimiters)
+    assert Keyword.WITH not in delimiters, "Type Lists may have nested `WITH` statements, cannot use `WITH` as a delimiter."
 
     types: List[DataType] = []
-    for tok in input_tokens:
-        if tok.value in TypeDict.keys():
-            types.append(TypeDict[tok.value])
-        elif tok.value in [T.ident for T in generic_types]:
-            types.append([T for T in generic_types if T.ident == tok.value][0])
+    while True:
+        end_tok, input_tokens = tokens_until_keywords(
+            start_tok, tokens, delimiters + [Keyword.WITH])
+
+        for tok in input_tokens:
+            if tok.value in TypeDict.keys():
+                types.append(TypeDict[tok.value])
+            elif tok.value in [T.ident for T in generic_types]:
+                types.append(
+                    [T for T in generic_types if T.ident == tok.value][0])
+            elif allow_undefined_generics:
+                types.append(DataType(tok.value, generic=True))
+            else:
+                compiler_error(
+                    False,
+                    tok,
+                    f"Unrecognized token `{tok.typ}:{tok.value}` in type list."
+                )
+
+        if end_tok.typ == Keyword.WITH:
+            struct_t = parse_with_struct_as_type(
+                end_tok, tokens, generic_types)
+            types.append(struct_t)
         else:
-            compiler_error(
-                False,
-                tok,
-                f"Unrecognized token `{tok.typ}:{tok.value}` in type list."
-            )
+            break
 
     return (end_tok, types)
 
@@ -741,6 +798,42 @@ def parse_fn_signature(
         tok = end_tok
 
     return tok, Signature(pops, puts)
+
+
+def convert_to_concrete_arg_list(gen_list: List[DataType], concrete_types: List[DataType], generics: List[DataType]):
+    type_list: List[DataType] = []
+    for T in gen_list:
+        if T.generic and T.struct:
+
+            assert T in StructMembers.keys()
+            assert T in StructGenerics.keys()
+
+            T_members = StructMembers[T]
+            T_generics = StructGenerics[T]
+            T_assignment_tag = T.ident[indexOf(T.ident, '<'):]
+
+            for G in T_generics:
+                T_assignment_tag = T_assignment_tag.replace(
+                    G.ident, concrete_types[indexOf(T_generics, G)].ident)
+
+            T_concrete_name = f"{T.ident[:indexOf(T.ident, '<')]}{T_assignment_tag}"
+            T_concrete_members = [T if not T.generic else concrete_types[indexOf(
+                T_generics, T)] for T in T_members]
+
+            TypeDict[T_concrete_name] = DataType(
+                ident=T_concrete_name,
+                generic=any([T.generic for T in T_concrete_members]),
+                struct=True,
+                size=sum([T.size for T in T_concrete_members])
+            )
+            StructMembers[TypeDict[T_concrete_name]] = T_concrete_members
+            type_list.append(TypeDict[T_concrete_name])
+        elif T.generic:
+            type_list.append(concrete_types[indexOf(generics, T)])
+        else:
+            type_list.append(T)
+
+    return type_list
 
 
 def call_generic_fn_with(start_tok: Token, tokens: List[Token], concrete_types: List[DataType], program: Program):
@@ -789,13 +882,18 @@ def call_generic_fn_with(start_tok: Token, tokens: List[Token], concrete_types: 
 
     concrete_name = f"{fn_name}{pretty_print_arg_list(concrete_types, '<', '>')}"
     if concrete_name not in fn_meta.keys():
-        sig = fn_meta[fn_name].signature
-        generics = fn_meta[fn_name].generics
-        pops = [T if not T.generic else concrete_types[indexOf(
-            generics, T)] for T in sig.pops]
-        puts = [T if not T.generic else concrete_types[indexOf(
-            generics, T)] for T in sig.puts]
-
+        fn_sig = fn_meta[fn_name].signature
+        fn_generics = fn_meta[fn_name].generics
+        pops = convert_to_concrete_arg_list(
+            fn_sig.pops,
+            concrete_types,
+            fn_generics
+        )
+        puts = convert_to_concrete_arg_list(
+            fn_sig.puts,
+            concrete_types,
+            fn_generics
+        )
         concrete_sig = Signature(pops, puts)
 
         fn_meta[concrete_name] = Function(
@@ -1767,7 +1865,7 @@ def generate_concrete_struct(op: Op, type_stack: List[DataType]) -> DataType:
         else:
             concrete_members.append(t)
 
-    concrete_struct_name = f"{gen_struct.ident}{pretty_print_arg_list(list(generic_map.values()))}"
+    concrete_struct_name = f"{gen_struct.ident}{pretty_print_arg_list(list(generic_map.values()), open='<', close='>')}"
     if concrete_struct_name not in TypeDict.keys():
         TypeDict[concrete_struct_name] = DataType(
             ident=concrete_struct_name,
@@ -1871,32 +1969,6 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
         rputs=[T if not T.generic else generic_map[T] for T in sig.rputs],
     )
     return new_sig
-
-
-def generate_concrete_function(op: Op, type_stack: List[DataType], fn_meta: FunctionMeta):
-
-    fn_name = op.tok.value
-    gen_sig = fn_meta[fn_name].signature
-    sig = assign_generics(op, gen_sig, type_stack, [])
-
-    name = f"{fn_name}{pretty_print_arg_list(sig.pops)}".replace(" ", "_")
-    concrete_fn = Function(
-        ident=name,
-        signature=sig,
-        generics=[],
-        tok=deepcopy(fn_meta[fn_name].tok),
-        stub=False,
-        program=deepcopy(fn_meta[fn_name].program)
-    )
-
-    concrete_fn.program[0].operand = name
-    fn_meta[concrete_fn.ident] = concrete_fn
-    for prog_op in concrete_fn.program:
-        prog_op.tok.value = None
-
-    fn_meta[name] = concrete_fn
-    type_check_fn(concrete_fn, fn_meta)
-    op.operand = name
 
 
 def type_check_fn(fn: Function, fn_meta: FunctionMeta):

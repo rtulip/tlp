@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/generics/with_non_word.tlp']
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/generics/with_non_word.tlp:1:1 [ERROR]: Expected one of [<Keyword.STRUCT: 'struct'>, <Keyword.FN: 'fn'>, <Keyword.DO: 'do'>], but found end of file instead
+./tests/generics/with_non_word.tlp:1:1 [ERROR]: Expected one of [<Keyword.STRUCT: 'struct'>, <Keyword.FN: 'fn'>, <Keyword.DO: 'do'>, <Keyword.WITH: 'with'>], but found end of file instead
 --------------------------
 exit code: 1
