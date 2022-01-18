@@ -383,6 +383,12 @@ def parse_tokens_until_keywords(
                     const_values,
                     reserved_memory,
                 )
+            elif tok.typ == Keyword.WITH and Keyword.WITH not in expected_keywords:
+                tok, types = parse_with_block_from_tokens(
+                    tok,
+                    tokens,
+                )
+                call_generic_fn_with(tok, tokens, types, program)
             else:
 
                 compiler_error(
