@@ -19,7 +19,7 @@ def cleanup(name='output'):
         pass
 
 
-def run_test(file_path: str, txt_file_path: str, compare: bool, verbose: bool = True) -> int:
+def run_test(file_path: str, txt_file_path: str, compare: bool, verbose: bool = True, greedy_exit: bool = False) -> int:
     cleanup()
     if compare:
         f = open("tmp.txt", "w")
@@ -65,6 +65,8 @@ def run_test(file_path: str, txt_file_path: str, compare: bool, verbose: bool = 
         if diff_result.returncode != 0:
             print(f"[TEST]: {file_path} -- Failed.")
             print(f"[DIFF]: {diff_result.stdout.decode('utf-8')}")
+            if greedy_exit:
+                exit(1)
         else:
             if verbose:
                 print(f"[TEST]: {file_path} -- Passed.")
@@ -78,16 +80,17 @@ def main():
     parser.add_argument('--test', type=str)
     parser.add_argument('--update', type=str)
     parser.add_argument('--filter', action='store_true', default=False)
+    parser.add_argument('--greedy', action='store_true', default=False)
 
     args = parser.parse_args()
     if args.test:
         file_path = args.test
         txt_file_path = file_path[:-3] + "txt"
-        run_test(file_path, txt_file_path, True)
+        run_test(file_path, txt_file_path, True, args.greedy)
     elif args.update:
         file_path = args.update
         txt_file_path = file_path[:-3] + "txt"
-        run_test(file_path, txt_file_path, False)
+        run_test(file_path, txt_file_path, False, False)
     else:
         tests_run, tests_passed = 0, 0
         for root, dir, files in os.walk("./tests"):
@@ -100,7 +103,7 @@ def main():
                     if compare:
                         tests_run += 1
                     tests_passed += run_test(file_path, txt_file_path,
-                                             compare, verbose=not args.filter)
+                                             compare, verbose=not args.filter, greedy_exit=args.greedy)
 
         run(["rm", "tmp.txt"], capture_output=True)
         print("----------------------------------")

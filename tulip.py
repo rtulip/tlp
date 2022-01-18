@@ -1,6 +1,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from operator import indexOf
 from subprocess import call
 from typing import List, Union, Dict, Optional, Any, Tuple, Callable
 from lexer import tokenize, Token, Intrinsic, MiscTokenKind, Keyword, tokenize_string
@@ -69,21 +70,22 @@ class Signature:
     rputs: ArgList = field(default_factory=lambda: [])
 
 
+Program = List[Op]
+
+
 @ dataclass
 class Function:
     ident: str
-    signature: Signature
     tok: Token
-    start_ip: Optional[int]
-    end_ip: Optional[int]
-    number: int
+    signature: Signature
     stub: bool
+    program: Program
 
 
 IncludedFiles: List[str] = []
 
 FunctionMeta = Dict[str, Function]
-Program = List[Op]
+
 ConstMap = Dict[str, Op]
 MemoryMap = Dict[str, Tuple[int, Token]]
 
@@ -156,30 +158,34 @@ def check_for_name_conflict(
     tok: Token,
     fn_meta: FunctionMeta,
     const_values: ConstMap,
-    reserved_memory: MemoryMap
+    reserved_memory: MemoryMap,
+    ignore_fn: bool = False,
+    ignore_type: bool = False,
+    ignore_const: bool = False,
+    ignore_mem: bool = False,
 ):
-    if name in fn_meta.keys():
+    if name in fn_meta.keys() and not ignore_fn:
         compiler_error(
             False,
             tok,
             f"Redefinition of `{name}`. Previously defined here: {fn_meta[name].tok.loc}"
         )
 
-    if name in TypeDict.keys():
+    if name in TypeDict.keys() and not ignore_type:
         compiler_error(
             False,
             tok,
             f"Redefinition of Type `{name}`."
         )
 
-    if name in const_values.keys():
+    if name in const_values.keys() and not ignore_const:
         compiler_error(
             False,
             tok,
             f"Redefinition of `{name}`. Previously defined here: {const_values[name].tok.loc}"
         )
 
-    if name in reserved_memory.keys():
+    if name in reserved_memory.keys() and not ignore_mem:
         compiler_error(
             False,
             tok,
@@ -208,6 +214,12 @@ def tokens_until_keywords(
 
         if tok.typ in expected_keywords:
             break
+        elif type(tok.typ) == Keyword:
+            compiler_error(
+                False,
+                tok,
+                f"Unexpected keyword {tok.typ}"
+            )
         else:
             toks.append(tok)
 
@@ -480,7 +492,7 @@ def parse_with_block_from_tokens(
     end_tok, list_tokens = tokens_until_keywords(
         start_tok,
         tokens,
-        [Keyword.STRUCT]
+        [Keyword.STRUCT, Keyword.FN]
     )
 
     compiler_error(
@@ -654,17 +666,79 @@ def parse_include_statement(start_tok: Token, tokens: List[Token], program: Prog
         IncludedFiles.append(include_str)
 
 
+def parse_type_list(
+    start_tok: Token,
+    tokens: List[Token],
+    generic_types: List[DataType],
+    delimiters=List[Keyword]
+) -> Tuple[Token, List[DataType]]:
+
+    compiler_error(
+        len(tokens) > 0,
+        start_tok,
+        f"Expected type list, but found end of file instead"
+    )
+
+    end_tok, input_tokens = tokens_until_keywords(
+        start_tok, tokens, delimiters)
+
+    types: List[DataType] = []
+    for tok in input_tokens:
+        if tok.value in TypeDict.keys():
+            types.append(TypeDict[tok.value])
+        elif tok.value in [T.ident for T in generic_types]:
+            types.append([T for T in generic_types if T.ident == tok.value][0])
+        else:
+            compiler_error(
+                False,
+                tok,
+                f"Unrecognized token `{tok.typ}:{tok.value}` in type list."
+            )
+
+    return (end_tok, types)
+
+
+def parse_fn_signature(
+    start_tok: Token,
+    tokens: List[Token],
+    generic_types: List[DataType]
+) -> Tuple[Token, Signature]:
+
+    puts: ArgList = []
+    pops: ArgList = []
+    tok, pops = parse_type_list(
+        start_tok,
+        tokens,
+        generic_types,
+        [Keyword.ARROW, Keyword.DO, Keyword.END]
+    )
+
+    if tok.typ == Keyword.ARROW:
+        end_tok, puts = parse_type_list(
+            tok,
+            tokens,
+            generic_types,
+            [Keyword.DO, Keyword.END]
+        )
+
+        compiler_error(
+            len(puts) > 0,
+            tok,
+            "Invalid signature. Arrow must be followed with at least one output type"
+        )
+        tok = end_tok
+
+    return tok, Signature(pops, puts)
+
+
 def parse_fn_from_tokens(
     start_tok: Token,
     tokens: List[Token],
-    program: Program,
+    generic_types: List[DataType],
     fn_meta: FunctionMeta,
     const_values: ConstMap,
     reserved_memory: MemoryMap
 ):
-    signature = Signature(pops=[], puts=[])
-    assert isinstance(signature.puts, list)
-
     assert start_tok.typ == Keyword.FN
 
     compiler_error(
@@ -693,113 +767,60 @@ def parse_fn_from_tokens(
             reserved_memory,
         )
 
-    pops = True
-    stub = False
     compiler_error(
         len(tokens) > 0,
         name_tok,
         "Expected function signature, but found end of file instead"
     )
 
-    while len(tokens) > 0:
-        tok = tokens.pop()
+    tok, signature = parse_fn_signature(start_tok, tokens, generic_types)
+    program: Program = []
 
-        if tok.typ == MiscTokenKind.WORD:
-            if tok.value in TypeDict.keys():
-                if pops:
-                    signature.pops.append(TypeDict[tok.value])
-                else:
-                    signature.puts.append(TypeDict[tok.value])
-            else:
-                if pops:
-                    signature.pops.append(
-                        DataType(
-                            ident=tok.value,
-                            generic=True
-                        )
-                    )
-                else:
-                    compiler_error(
-                        False,
-                        tok,
-                        "generic functions aren't supported yet."
-                    )
-
-        elif tok.typ == Keyword.ARROW:
-
-            compiler_error(
-                pops,
-                tok,
-                "Only one arrow statement can be used in function signature definition"
-            )
-
-            pops = False
-
-        elif tok.typ == Keyword.DO:
-            compiler_error(
-                pops or len(signature.puts) > 0,
-                tok,
-                "Invalid signature. Arrow notation must be followed with at least one output type"
-            )
-            break
-
-        elif tok.typ == Keyword.END:
-            stub = True
-            break
-        else:
-            compiler_error(
-                False,
-                tok,
-                f"""Unexpected token in function signature definition: {tok.typ}:{tok.value}.
-    [Note]: Expected type names, `ARROW` or `DO`."""
-            )
-
-    if not stub:
-        start_loc = len(program)
-        program.append(Op(
-            op=OpType.NOP,
-            operand=None,
-            tok=start_tok
-        ))
-        program[start_loc].operand = fn_name
+    # Chedk for redefinitions
+    if tok.typ == Keyword.END:
         compiler_error(
-            tok.typ == Keyword.DO,
-            tok,
-            "Expected `DO` after function signature. Found end of file instead"
+            fn_name not in fn_meta.keys(),
+            start_tok,
+            f"""Cannot pre-define a function more than once.
+    [Note]: Function `{fn_name}` initially defined here: {fn_meta[fn_name].tok.loc}"""
         )
+    elif fn_name in fn_meta.keys():
+        compiler_error(
+            fn_meta[fn_name].stub,
+            fn_meta[fn_name].tok,
+            f"""Redefinition of function `{fn_name}`.
+    [Note]: Function `{fn_name}` initially defined here: {fn_meta[fn_name].tok.loc}"""
+        )
+
+    check_for_name_conflict(
+        fn_name,
+        tok,
+        fn_meta,
+        const_values,
+        reserved_memory,
+        ignore_fn=True
+    )
+
+    # Add fn to meta for recursion purposes.
+    fn_meta[fn_name] = Function(
+        fn_name,
+        start_tok,
+        signature,
+        stub=tok.typ == Keyword.END,
+        program=program
+    )
+    if tok.typ == Keyword.DO:
 
         if fn_name in fn_meta.keys():
 
-            original_sig = fn_meta[fn_name].signature
-            assert isinstance(original_sig.puts, list)
+            stub_sig = fn_meta[fn_name].signature
             compiler_error(
                 signature == fn_meta[fn_name].signature,
                 start_tok,
                 f"""Function signature for {fn_name} must match pre-declaration.
     [Note]: Initially defined here: {fn_meta[fn_name].tok.loc}
-    [Note]: Expected Signature: {pretty_print_arg_list(original_sig.pops)} -> {pretty_print_arg_list(original_sig.puts)}
+    [Note]: Expected Signature: {pretty_print_arg_list(stub_sig.pops)} -> {pretty_print_arg_list(stub_sig.puts)}
     [Note]: Found Signature: {pretty_print_arg_list(signature.pops)} -> {pretty_print_arg_list(signature.puts)}"""
-            )
-
-            fn_meta[fn_name] = Function(
-                ident=fn_name,
-                signature=signature,
-                tok=start_tok,
-                start_ip=start_loc,
-                end_ip=None,
-                number=fn_meta[fn_name].number,
-                stub=False,
-            )
-        else:
-
-            fn_meta[fn_name] = Function(
-                ident=fn_name,
-                signature=signature,
-                tok=start_tok,
-                start_ip=start_loc,
-                end_ip=None,
-                number=len(fn_meta),
-                stub=False,
             )
 
         tok_to_end = parse_tokens_until_keywords(
@@ -829,37 +850,6 @@ def parse_fn_from_tokens(
             operand=None,
             tok=tok_to_end
         ))
-
-        program.append(Op(
-            op=OpType.NOP,
-            operand=Keyword.END,
-            tok=tok_to_end
-        ))
-
-        end_ip = len(program)
-
-        assert fn_name in fn_meta.keys()
-        assert fn_meta[fn_name].end_ip == None
-        fn_meta[fn_name].end_ip = end_ip
-    else:
-
-        if fn_name in fn_meta.keys():
-            compiler_error(
-                fn_name not in fn_meta.keys(),
-                start_tok,
-                f"""Cannot pre-define a function more than once.
-        [Note]: Functio {fn_name} initially defined here: {fn_meta[fn_name].tok.loc}"""
-            )
-
-        fn_meta[fn_name] = Function(
-            ident=fn_name,
-            signature=signature,
-            tok=start_tok,
-            start_ip=None,
-            end_ip=None,
-            number=len(fn_meta),
-            stub=True,
-        )
 
 
 def generate_read_write_fns(start_tok: Token, new_struct: DataType, members: ArgList) -> List[Token]:
@@ -1335,7 +1325,7 @@ def program_from_tokens(
             parse_fn_from_tokens(
                 tok,
                 tokens,
-                program,
+                generic_types,
                 fn_meta,
                 const_values,
                 reserved_memory
@@ -1409,11 +1399,6 @@ def asm_header(out):
 
 
 def asm_exit(out, strings, reserved_memory: MemoryMap):
-    out.write("exit:\n")
-    out.write("    mov rax, 60\n")
-    out.write("    mov rdi, 0\n")
-    out.write("    syscall\n")
-    out.write("\n")
     out.write("segment .data\n")
     for i, data in enumerate(strings):
         out.write(f"    string_{i}: db {','.join(map(hex, list(data)))}\n")
@@ -1808,52 +1793,33 @@ def generate_concrete_function(op: Op, type_stack: List[DataType], fn_meta: Func
     gen_sig = fn_meta[fn_name].signature
     sig = assign_generics(op, gen_sig, type_stack, [])
 
-    concrete_name = f"{fn_name}{pretty_print_arg_list(sig.pops)}".replace(
-        " ", "_")
-    gen_start_ip = fn_meta[fn_name].start_ip
-    gen_end_ip = fn_meta[fn_name].end_ip
-    assert gen_start_ip is not None
-    assert gen_end_ip is not None
-    gen_fn_len = gen_end_ip - gen_start_ip
-
+    name = f"{fn_name}{pretty_print_arg_list(sig.pops)}".replace(" ", "_")
     concrete_fn = Function(
-        ident=concrete_name,
+        ident=name,
         signature=sig,
-        tok=Token(
-            typ=fn_meta[fn_name].tok.typ,
-            value=fn_meta[fn_name].tok.value,
-            loc=fn_meta[fn_name].tok.loc
-        ),
-        start_ip=len(program),
-        end_ip=len(program) + gen_fn_len,
-        number=len(fn_meta),
-        stub=False
+        tok=deepcopy(fn_meta[fn_name].tok),
+        stub=False,
+        program=deepcopy(fn_meta[fn_name].program)
     )
 
+    concrete_fn.program[0].operand = name
     fn_meta[concrete_fn.ident] = concrete_fn
-    program += deepcopy(program[fn_meta[fn_name].start_ip: fn_meta[fn_name].end_ip])
-    assert isinstance(concrete_fn.start_ip, int)
-    program[concrete_fn.start_ip].operand = concrete_name
-
-    for prog_op in program[concrete_fn.start_ip: concrete_fn.end_ip]:
+    for prog_op in concrete_fn.program:
         prog_op.tok.value = None
 
-    type_check_fn(concrete_fn, program, fn_meta)
-    op.operand = concrete_name
+    fn_meta[name] = concrete_fn
+    type_check_fn(concrete_fn, fn_meta)
+    op.operand = name
 
 
-def type_check_fn(fn: Function, program: Program, fn_meta: FunctionMeta):
+def type_check_fn(fn: Function, fn_meta: FunctionMeta):
 
-    assert fn.start_ip is not None
     _, out_stack, out_ret_stack = type_check_program(
-        program,
+        fn.program,
         fn_meta,
-        fn.start_ip + 1,    # Start one instruction past the FN name marker
+        0,  # Start 1 past the fn name token
         starting_stack=fn.signature.pops.copy(),
         starting_rstack=[],
-        break_on=[
-            lambda op: op.op == OpType.NOP and op.tok.typ == Keyword.END
-        ]
     )
 
     puts = fn.signature.puts
@@ -1892,7 +1858,7 @@ def type_check_program(
 
     if not skip_fn_eval:
         for fn in fn_meta.values():
-            type_check_fn(fn, program, fn_meta)
+            type_check_fn(fn, fn_meta)
     while ip < len(program):
         op = program[ip]
         if any([cond(op) for cond in break_on]):
@@ -2063,14 +2029,10 @@ def type_check_program(
 
             sig = assign_generics(op, sig, type_stack, ret_stack)
             evaluate_signature(op, sig, type_stack, ret_stack)
+
             if (op.op == OpType.JUMP):
                 assert isinstance(op.operand, int)
                 ip = op.operand
-            elif op.op == OpType.NOP and op.operand in fn_meta.keys():
-                assert isinstance(op.operand, str)
-                tmp = fn_meta[op.operand].end_ip
-                assert isinstance(tmp, int), f"{tmp}, {type(tmp)}"
-                ip = tmp
             else:
                 ip += 1
 
@@ -2139,315 +2101,331 @@ def op_swap_to_asm(out, ip, n, m):
     out.write(f"    jg      loop_{ip}\n")
 
 
+def compile_ops(out, ip, program: Program, fn_meta, reserved_memory, strings) -> int:
+    start_ip = ip
+    for op in program:
+        out.write(f"op_{ip}: ")
+        if op.op == OpType.PUSH_UINT:
+            out.write(f";; --- {op.op} {op.operand} --- \n")
+            out.write(f"    push    {op.operand}\n")
+        elif op.op == OpType.PUSH_BOOL:
+            assert isinstance(op.operand, bool)
+            out.write(f";; --- {op.op} {op.operand} --- \n")
+            out.write(f"    push    {int(op.operand)}\n")
+        elif op.op == OpType.PUSH_PTR:
+            assert isinstance(op.operand, str)
+            assert op.operand in reserved_memory.keys()
+            out.write(f";; --- {op.op} {op.operand} --- \n")
+            out.write(f"    push    mem_{op.operand}\n")
+        elif op.op == OpType.PUSH_STRING:
+            assert isinstance(op.operand, str)
+            out.write(f";; --- {op.op} --- \n")
+            string = op.operand + '\0'
+            encoded = string.encode('utf-8')
+            out.write(f"    mov     rax, {len(encoded) - 1}\n")
+            out.write(f"    push    rax\n")
+            out.write(f"    push    string_{len(strings)}\n")
+            strings.append(encoded)
+        elif op.op == OpType.INTRINSIC:
+
+            if op.operand == Intrinsic.ADD:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    pop     rbx\n")
+                out.write(f"    add     rax, rbx\n")
+                out.write(f"    push    rax\n")
+            elif op.operand == Intrinsic.SUB:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    pop     rbx\n")
+                out.write(f"    sub     rbx, rax\n")
+                out.write(f"    push    rbx\n")
+            elif op.operand == Intrinsic.MUL:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rcx\n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    mul     rcx\n")
+                out.write(f"    push    rax\n")
+            elif op.operand == Intrinsic.DIV:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    mov     rdx, 0\n")
+                out.write(f"    pop     rcx\n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    div     rcx\n")
+                out.write(f"    push    rax\n")
+            elif op.operand == Intrinsic.MOD:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    mov     rdx, 0\n")
+                out.write(f"    pop     rcx\n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    div     rcx\n")
+                out.write(f"    push    rdx\n")
+            elif op.operand == Intrinsic.LSL:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rcx\n")
+                out.write(f"    pop     rbx\n")
+                out.write(f"    shl     rbx, cl\n")
+                out.write(f"    push    rbx\n")
+            elif op.operand == Intrinsic.AND:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    pop     rbx\n")
+                out.write(f"    and     rbx, rax\n")
+                out.write(f"    push    rbx\n")
+            elif op.operand == Intrinsic.OR:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    pop     rbx\n")
+                out.write(f"    or      rbx, rax\n")
+                out.write(f"    push    rbx\n")
+            elif op.operand == Intrinsic.BW_AND:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    pop     rbx\n")
+                out.write(f"    and     rbx, rax\n")
+                out.write(f"    push    rbx\n")
+            elif op.operand == Intrinsic.PUTU:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rdi\n")
+                out.write(f"    call    putu\n")
+            elif op.operand == Intrinsic.DUP:
+                out.write(
+                    f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+                out.write(f"    mov     rbx, rsp\n")
+                out.write(f"    mov     rcx, rsp\n")
+                out.write(f"    add     rcx, {(op.tok.value - 1) * 8} \n")
+                out.write(f"loop_{ip}:\n")
+                out.write(f"    mov     rax, [rcx]\n")
+                out.write(f"    push    rax\n")
+                out.write(f"    sub     rcx, 8\n")
+                out.write(f"    cmp     rbx, rcx\n")
+                out.write(f"    jle     loop_{ip}\n")
+            elif op.operand == Intrinsic.DROP:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                op_drop_to_asm(out, op.tok.value)
+            elif op.operand == Intrinsic.SWAP:
+                out.write(
+                    f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+                n, m = op.tok.value
+                op_swap_to_asm(out, ip, n, m)
+            elif op.operand == Intrinsic.RPUSH:
+                out.write(
+                    f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+                op_ret_stack_push(out, op.tok.value)
+            elif op.operand == Intrinsic.RPOP:
+                out.write(
+                    f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+                op_ret_stack_pop(out, op.tok.value)
+            elif op.operand == Intrinsic.SPLIT:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+            elif op.operand == Intrinsic.READ64:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    mov     rax, [rax]\n")
+                out.write(f"    push    rax\n")
+            elif op.operand == Intrinsic.READ8:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    xor     rbx, rbx\n")
+                out.write(f"    mov     bl, [rax]\n")
+                out.write(f"    push    rbx\n")
+            elif op.operand == Intrinsic.WRITE64:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop rax\n")
+                out.write(f"    pop rbx\n")
+                out.write(f"    mov [rax], rbx\n")
+            elif op.operand == Intrinsic.WRITE8:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop rax\n")
+                out.write(f"    pop rbx\n")
+                out.write(f"    mov [rax], bl\n")
+            elif op.operand == Intrinsic.EQ:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    mov     rcx, 0\n")
+                out.write(f"    mov     rdx, 1\n")
+                out.write(f"    pop     rbx\n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    cmp     rax, rbx\n")
+                out.write(f"    cmove   rcx, rdx\n")
+                out.write(f"    push    rcx\n")
+            elif op.operand == Intrinsic.LE:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    mov     rcx, 0\n")
+                out.write(f"    mov     rdx, 1\n")
+                out.write(f"    pop     rbx\n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    cmp     rax, rbx\n")
+                out.write(f"    cmovle  rcx, rdx\n")
+                out.write(f"    push    rcx\n")
+            elif op.operand == Intrinsic.LT:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    mov     rcx, 0\n")
+                out.write(f"    mov     rdx, 1\n")
+                out.write(f"    pop     rbx\n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    cmp     rax, rbx\n")
+                out.write(f"    cmovl   rcx, rdx\n")
+                out.write(f"    push    rcx\n")
+            elif op.operand == Intrinsic.GT:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    mov     rcx, 0\n")
+                out.write(f"    mov     rdx, 1\n")
+                out.write(f"    pop     rbx\n")
+                out.write(f"    pop     rax\n")
+                out.write(f"    cmp     rax, rbx\n")
+                out.write(f"    cmovg   rcx, rdx\n")
+                out.write(f"    push    rcx\n")
+            elif op.operand == Intrinsic.CAST:
+                out.write(
+                    f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+            elif op.operand == Intrinsic.CAST_TUPLE:
+                out.write(
+                    f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+            elif op.operand == Intrinsic.INNER_TUPLE:
+                out.write(
+                    f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+                index = op.tok.value[0]
+                members = StructMembers[op.tok.value[1]].copy()
+
+                for i in range(index, len(members)-1):
+                    out.write(f";; Drop\n")
+                    op_drop_to_asm(out, members.pop().size)
+
+                for i in range(index):
+                    out.write(f";; SWAP DROP {i}\n")
+                    op_swap_to_asm(
+                        out, f"{ip}_{i}", members[-2].size, members[-1].size)
+                    op_drop_to_asm(out, members[-2].size)
+                    del members[-2]
+            elif op.operand == Intrinsic.SIZE_OF:
+                compiler_error(
+                    op.tok.value in TypeDict.keys(),
+                    op.tok,
+                    f"Cannot get size of unknown type `{op.tok.value}`."
+                )
+                out.write(
+                    f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+                out.write(
+                    f"    push    {TypeDict[op.tok.value].size * 8}\n")
+            elif op.operand == Intrinsic.SYSCALL0:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")  # SYSCALL NUM
+                out.write(f"    syscall\n")
+                out.write(f"    push    rax\n")  # push result
+            elif op.operand == Intrinsic.SYSCALL1:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")  # SYSCALL NUM
+                out.write(f"    pop     rdi\n")  # Arg 0
+                out.write(f"    syscall\n")
+                out.write(f"    push    rax\n")  # push result
+            elif op.operand == Intrinsic.SYSCALL2:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")  # SYSCALL NUM
+                out.write(f"    pop     rdi\n")  # Arg 0
+                out.write(f"    pop     rsi\n")  # Arg 1
+                out.write(f"    syscall\n")
+                out.write(f"    push    rax\n")  # push result
+            elif op.operand == Intrinsic.SYSCALL3:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")  # SYSCALL NUM
+                out.write(f"    pop     rdi\n")  # Arg 0
+                out.write(f"    pop     rsi\n")  # Arg 1
+                out.write(f"    pop     rdx\n")  # Arg 2
+                out.write(f"    syscall\n")
+                out.write(f"    push    rax\n")  # push result
+            elif op.operand == Intrinsic.SYSCALL4:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")  # SYSCALL NUM
+                out.write(f"    pop     rdi\n")  # Arg 0
+                out.write(f"    pop     rsi\n")  # Arg 1
+                out.write(f"    pop     rdx\n")  # Arg 2
+                out.write(f"    pop     r10\n")  # Arg 3
+                out.write(f"    syscall\n")
+                out.write(f"    push    rax\n")  # push result
+            elif op.operand == Intrinsic.SYSCALL5:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")  # SYSCALL NUM
+                out.write(f"    pop     rdi\n")  # Arg 0
+                out.write(f"    pop     rsi\n")  # Arg 1
+                out.write(f"    pop     rdx\n")  # Arg 2
+                out.write(f"    pop     r10\n")  # Arg 3
+                out.write(f"    pop     r8\n")   # Arg 4
+                out.write(f"    syscall\n")
+                out.write(f"    push    rax\n")  # push result
+            elif op.operand == Intrinsic.SYSCALL6:
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rax\n")  # SYSCALL NUM
+                out.write(f"    pop     rdi\n")  # Arg 0
+                out.write(f"    pop     rsi\n")  # Arg 1
+                out.write(f"    pop     rdx\n")  # Arg 2
+                out.write(f"    pop     r10\n")  # Arg 3
+                out.write(f"    pop     r8\n")   # Arg 4
+                out.write(f"    pop     r9\n")   # Arg 5
+                out.write(f"    syscall\n")
+                out.write(f"    push    rax\n")  # push result
+            else:
+                assert False, f"Unhandled Intrinsic: {op.operand}"
+        elif op.op == OpType.JUMP_COND:
+            out.write(f";; --- {op.op} {op.operand} --- \n")
+            out.write(f"    pop     rax\n")
+            out.write(f"    test    rax, rax\n")
+            out.write(f"    jz      op_{start_ip + op.operand}\n")
+        elif op.op == OpType.JUMP:
+            out.write(f";; --- {op.op} {op.operand} --- \n")
+            if ip + 1 != op.operand:
+                out.write(f"    jmp     op_{start_ip + op.operand}\n")
+        elif op.op == OpType.NOP:
+            out.write("\n")
+        elif op.op == OpType.RETURN:
+            out.write(f";; --- {op.op} {op.operand} --- \n")
+            out.write(f"    mov     rax, rsp\n")
+            out.write(f"    mov     rsp, [ret_stack_rsp]\n")
+            out.write(f"    ret\n")
+        elif op.op == OpType.CALL:
+            assert isinstance(op.operand, str)
+            out.write(f";; --- {op.op} {op.operand} --- \n")
+            out.write(f"    mov     rax, rsp\n")
+            out.write(f"    mov     rsp, [ret_stack_rsp]\n")
+            out.write(
+                f"    call    fn_{indexOf(list(fn_meta), op.operand)}\n")
+            out.write(f"    mov     [ret_stack_rsp], rsp\n")
+            out.write(f"    mov     rsp, rax\n")
+        else:
+            print(f"Operation {op.op} is not supported yet")
+            exit(1)
+        ip += 1
+
+    return ip
+
+
 def compile_program(out_path: str, program: Program, fn_meta: FunctionMeta, reserved_memory: MemoryMap):
 
     strings: List[bytes] = []
+    ip = 0
 
     with open(f"{out_path}.asm", 'w') as out:
         asm_header(out)
-        for ip, op in enumerate(program):
-            out.write(f"op_{ip}: ")
-            if op.op == OpType.PUSH_UINT:
-                out.write(f";; --- {op.op} {op.operand} --- \n")
-                out.write(f"    push    {op.operand}\n")
-            elif op.op == OpType.PUSH_BOOL:
-                assert isinstance(op.operand, bool)
-                out.write(f";; --- {op.op} {op.operand} --- \n")
-                out.write(f"    push    {int(op.operand)}\n")
-            elif op.op == OpType.PUSH_PTR:
-                assert isinstance(op.operand, str)
-                assert op.operand in reserved_memory.keys()
-                out.write(f";; --- {op.op} {op.operand} --- \n")
-                out.write(f"    push    mem_{op.operand}\n")
-            elif op.op == OpType.PUSH_STRING:
-                assert isinstance(op.operand, str)
-                out.write(f";; --- {op.op} --- \n")
-                string = op.operand + '\0'
-                encoded = string.encode('utf-8')
-                out.write(f"    mov     rax, {len(encoded) - 1}\n")
-                out.write(f"    push    rax\n")
-                out.write(f"    push    string_{len(strings)}\n")
-                strings.append(encoded)
-            elif op.op == OpType.INTRINSIC:
 
-                if op.operand == Intrinsic.ADD:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    pop     rbx\n")
-                    out.write(f"    add     rax, rbx\n")
-                    out.write(f"    push    rax\n")
-                elif op.operand == Intrinsic.SUB:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    pop     rbx\n")
-                    out.write(f"    sub     rbx, rax\n")
-                    out.write(f"    push    rbx\n")
-                elif op.operand == Intrinsic.MUL:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rcx\n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    mul     rcx\n")
-                    out.write(f"    push    rax\n")
-                elif op.operand == Intrinsic.DIV:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    mov     rdx, 0\n")
-                    out.write(f"    pop     rcx\n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    div     rcx\n")
-                    out.write(f"    push    rax\n")
-                elif op.operand == Intrinsic.MOD:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    mov     rdx, 0\n")
-                    out.write(f"    pop     rcx\n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    div     rcx\n")
-                    out.write(f"    push    rdx\n")
-                elif op.operand == Intrinsic.LSL:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rcx\n")
-                    out.write(f"    pop     rbx\n")
-                    out.write(f"    shl     rbx, cl\n")
-                    out.write(f"    push    rbx\n")
-                elif op.operand == Intrinsic.AND:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    pop     rbx\n")
-                    out.write(f"    and     rbx, rax\n")
-                    out.write(f"    push    rbx\n")
-                elif op.operand == Intrinsic.OR:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    pop     rbx\n")
-                    out.write(f"    or      rbx, rax\n")
-                    out.write(f"    push    rbx\n")
-                elif op.operand == Intrinsic.BW_AND:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    pop     rbx\n")
-                    out.write(f"    and     rbx, rax\n")
-                    out.write(f"    push    rbx\n")
-                elif op.operand == Intrinsic.PUTU:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rdi\n")
-                    out.write(f"    call    putu\n")
-                elif op.operand == Intrinsic.DUP:
-                    out.write(
-                        f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
-                    out.write(f"    mov     rbx, rsp\n")
-                    out.write(f"    mov     rcx, rsp\n")
-                    out.write(f"    add     rcx, {(op.tok.value - 1) * 8} \n")
-                    out.write(f"loop_{ip}:\n")
-                    out.write(f"    mov     rax, [rcx]\n")
-                    out.write(f"    push    rax\n")
-                    out.write(f"    sub     rcx, 8\n")
-                    out.write(f"    cmp     rbx, rcx\n")
-                    out.write(f"    jle     loop_{ip}\n")
-                elif op.operand == Intrinsic.DROP:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    op_drop_to_asm(out, op.tok.value)
-                elif op.operand == Intrinsic.SWAP:
-                    out.write(
-                        f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
-                    n, m = op.tok.value
-                    op_swap_to_asm(out, ip, n, m)
-                elif op.operand == Intrinsic.RPUSH:
-                    out.write(
-                        f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
-                    op_ret_stack_push(out, op.tok.value)
-                elif op.operand == Intrinsic.RPOP:
-                    out.write(
-                        f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
-                    op_ret_stack_pop(out, op.tok.value)
-                elif op.operand == Intrinsic.SPLIT:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                elif op.operand == Intrinsic.READ64:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    mov     rax, [rax]\n")
-                    out.write(f"    push    rax\n")
-                elif op.operand == Intrinsic.READ8:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    xor     rbx, rbx\n")
-                    out.write(f"    mov     bl, [rax]\n")
-                    out.write(f"    push    rbx\n")
-                elif op.operand == Intrinsic.WRITE64:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop rax\n")
-                    out.write(f"    pop rbx\n")
-                    out.write(f"    mov [rax], rbx\n")
-                elif op.operand == Intrinsic.WRITE8:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop rax\n")
-                    out.write(f"    pop rbx\n")
-                    out.write(f"    mov [rax], bl\n")
-                elif op.operand == Intrinsic.EQ:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    mov     rcx, 0\n")
-                    out.write(f"    mov     rdx, 1\n")
-                    out.write(f"    pop     rbx\n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    cmp     rax, rbx\n")
-                    out.write(f"    cmove   rcx, rdx\n")
-                    out.write(f"    push    rcx\n")
-                elif op.operand == Intrinsic.LE:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    mov     rcx, 0\n")
-                    out.write(f"    mov     rdx, 1\n")
-                    out.write(f"    pop     rbx\n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    cmp     rax, rbx\n")
-                    out.write(f"    cmovle  rcx, rdx\n")
-                    out.write(f"    push    rcx\n")
-                elif op.operand == Intrinsic.LT:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    mov     rcx, 0\n")
-                    out.write(f"    mov     rdx, 1\n")
-                    out.write(f"    pop     rbx\n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    cmp     rax, rbx\n")
-                    out.write(f"    cmovl   rcx, rdx\n")
-                    out.write(f"    push    rcx\n")
-                elif op.operand == Intrinsic.GT:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    mov     rcx, 0\n")
-                    out.write(f"    mov     rdx, 1\n")
-                    out.write(f"    pop     rbx\n")
-                    out.write(f"    pop     rax\n")
-                    out.write(f"    cmp     rax, rbx\n")
-                    out.write(f"    cmovg   rcx, rdx\n")
-                    out.write(f"    push    rcx\n")
-                elif op.operand == Intrinsic.CAST:
-                    out.write(
-                        f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
-                elif op.operand == Intrinsic.CAST_TUPLE:
-                    out.write(
-                        f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
-                elif op.operand == Intrinsic.INNER_TUPLE:
-                    out.write(
-                        f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
-                    index = op.tok.value[0]
-                    members = StructMembers[op.tok.value[1]].copy()
+        ip = compile_ops(out, ip, program, fn_meta, reserved_memory, strings)
+        out.write(f"op_{ip}:\n")
+        ip += 1
+        out.write("exit:\n")
+        out.write("    mov rax, 60\n")
+        out.write("    mov rdi, 0\n")
+        out.write("    syscall\n")
+        out.write("\n")
+        out.write(
+            f";; ---------------------- FUNCTIONS -------------------------\n")
+        for i, fn in enumerate(fn_meta.values()):
+            out.write(f"fn_{i}:  ;; --- {fn.ident} ---\n")
+            out.write(f"    mov     [ret_stack_rsp], rsp\n")
+            out.write(f"    mov     rsp, rax\n")
 
-                    for i in range(index, len(members)-1):
-                        out.write(f";; Drop\n")
-                        op_drop_to_asm(out, members.pop().size)
+            ip = compile_ops(out, ip, fn.program, fn_meta,
+                             reserved_memory, strings)
 
-                    for i in range(index):
-                        out.write(f";; SWAP DROP {i}\n")
-                        op_swap_to_asm(
-                            out, f"{ip}_{i}", members[-2].size, members[-1].size)
-                        op_drop_to_asm(out, members[-2].size)
-                        del members[-2]
-                elif op.operand == Intrinsic.SIZE_OF:
-                    compiler_error(
-                        op.tok.value in TypeDict.keys(),
-                        op.tok,
-                        f"Cannot get size of unknown type `{op.tok.value}`."
-                    )
-                    out.write(
-                        f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
-                    out.write(
-                        f"    push    {TypeDict[op.tok.value].size * 8}\n")
-                elif op.operand == Intrinsic.SYSCALL0:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")  # SYSCALL NUM
-                    out.write(f"    syscall\n")
-                    out.write(f"    push    rax\n")  # push result
-                elif op.operand == Intrinsic.SYSCALL1:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")  # SYSCALL NUM
-                    out.write(f"    pop     rdi\n")  # Arg 0
-                    out.write(f"    syscall\n")
-                    out.write(f"    push    rax\n")  # push result
-                elif op.operand == Intrinsic.SYSCALL2:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")  # SYSCALL NUM
-                    out.write(f"    pop     rdi\n")  # Arg 0
-                    out.write(f"    pop     rsi\n")  # Arg 1
-                    out.write(f"    syscall\n")
-                    out.write(f"    push    rax\n")  # push result
-                elif op.operand == Intrinsic.SYSCALL3:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")  # SYSCALL NUM
-                    out.write(f"    pop     rdi\n")  # Arg 0
-                    out.write(f"    pop     rsi\n")  # Arg 1
-                    out.write(f"    pop     rdx\n")  # Arg 2
-                    out.write(f"    syscall\n")
-                    out.write(f"    push    rax\n")  # push result
-                elif op.operand == Intrinsic.SYSCALL4:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")  # SYSCALL NUM
-                    out.write(f"    pop     rdi\n")  # Arg 0
-                    out.write(f"    pop     rsi\n")  # Arg 1
-                    out.write(f"    pop     rdx\n")  # Arg 2
-                    out.write(f"    pop     r10\n")  # Arg 3
-                    out.write(f"    syscall\n")
-                    out.write(f"    push    rax\n")  # push result
-                elif op.operand == Intrinsic.SYSCALL5:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")  # SYSCALL NUM
-                    out.write(f"    pop     rdi\n")  # Arg 0
-                    out.write(f"    pop     rsi\n")  # Arg 1
-                    out.write(f"    pop     rdx\n")  # Arg 2
-                    out.write(f"    pop     r10\n")  # Arg 3
-                    out.write(f"    pop     r8\n")   # Arg 4
-                    out.write(f"    syscall\n")
-                    out.write(f"    push    rax\n")  # push result
-                elif op.operand == Intrinsic.SYSCALL6:
-                    out.write(f";; --- {op.op} {op.operand} --- \n")
-                    out.write(f"    pop     rax\n")  # SYSCALL NUM
-                    out.write(f"    pop     rdi\n")  # Arg 0
-                    out.write(f"    pop     rsi\n")  # Arg 1
-                    out.write(f"    pop     rdx\n")  # Arg 2
-                    out.write(f"    pop     r10\n")  # Arg 3
-                    out.write(f"    pop     r8\n")   # Arg 4
-                    out.write(f"    pop     r9\n")   # Arg 5
-                    out.write(f"    syscall\n")
-                    out.write(f"    push    rax\n")  # push result
-                else:
-                    assert False, f"Unhandled Intrinsic: {op.operand}"
-            elif op.op == OpType.JUMP_COND:
-                out.write(f";; --- {op.op} {op.operand} --- \n")
-                out.write(f"    pop     rax\n")
-                out.write(f"    test    rax, rax\n")
-                out.write(f"    jz      op_{op.operand}\n")
-            elif op.op == OpType.JUMP:
-                out.write(f";; --- {op.op} {op.operand} --- \n")
-                if ip + 1 != op.operand:
-                    out.write(f"    jmp     op_{op.operand}\n")
-            elif op.op == OpType.NOP:
-                if op.tok.typ == Keyword.FN:
-                    out.write(f";; --- START OF FN {op.operand} ---\n")
-                    assert isinstance(op.operand, str)
-                    assert op.operand in fn_meta.keys()
-                    after_fn_def = fn_meta[op.operand].end_ip
-                    fn_number = fn_meta[op.operand].number
-                    assert after_fn_def != None
-                    out.write(f"jmp op_{after_fn_def}\n")
-                    out.write(f"fn_{fn_number}:\n")
-                    out.write(f"    mov     [ret_stack_rsp], rsp\n")
-                    out.write(f"    mov     rsp, rax\n")
-                else:
-                    out.write("\n")
-            elif op.op == OpType.RETURN:
-                out.write(f";; --- {op.op} {op.operand} --- \n")
-                out.write(f"    mov     rax, rsp\n")
-                out.write(f"    mov     rsp, [ret_stack_rsp]\n")
-                out.write(f"    ret\n")
-            elif op.op == OpType.CALL:
-                assert isinstance(op.operand, str)
-                out.write(f";; --- {op.op} {op.operand} --- \n")
-                out.write(f"    mov     rax, rsp\n")
-                out.write(f"    mov     rsp, [ret_stack_rsp]\n")
-                out.write(f"    call    fn_{fn_meta[op.operand].number}\n")
-                out.write(f"    mov     [ret_stack_rsp], rsp\n")
-                out.write(f"    mov     rsp, rax\n")
-            else:
-                print(f"Operation {op.op} is not supported yet")
-                exit(1)
-        out.write(f"op_{len(program)}:\n")
         asm_exit(out, strings, reserved_memory)
+
     call(["nasm", "-felf64", f"{out_path}.asm"])
     call(["ld", "-o", f"{out_path}", f"{out_path}.o"])
 

@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/fn_multiple_arrow.tlp']
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/fn_multiple_arrow.tlp:1:11 [ERROR]: Only one arrow statement can be used in function signature definition
+./tests/compiler_errors/fn_multiple_arrow.tlp:1:11 [ERROR]: Unexpected keyword Keyword.ARROW
 --------------------------
 exit code: 1

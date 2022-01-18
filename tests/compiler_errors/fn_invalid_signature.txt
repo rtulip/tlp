@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/fn_invalid_signature.tlp'
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/fn_invalid_signature.tlp:1:15 [ERROR]: Invalid signature. Arrow notation must be followed with at least one output type
+./tests/compiler_errors/fn_invalid_signature.tlp:1:12 [ERROR]: Invalid signature. Arrow must be followed with at least one output type
 --------------------------
 exit code: 1
