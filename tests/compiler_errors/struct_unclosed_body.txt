@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/struct_unclosed_body.tlp'
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/struct_unclosed_body.tlp:1:8 [ERROR]: Expected one of [<Keyword.END: 'end'>], but found end of file instead
+./tests/compiler_errors/struct_unclosed_body.tlp:1:8 [ERROR]: Expected one of [<Keyword.END: 'end'>, <Keyword.WITH: 'with'>, <Keyword.FN_TYPE: '&fn'>], but found end of file instead
 --------------------------
 exit code: 1
