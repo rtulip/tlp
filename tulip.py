@@ -680,13 +680,16 @@ def parse_include_statement(start_tok: Token, tokens: List[Token], program: Prog
         IncludedFiles.append(include_str)
 
 
-def parse_with_struct_as_type(start_tok: Token, tokens: List[Token], generic_types: List[DataType]) -> DataType:
-    tok, type_list = parse_type_list(
-        start_tok, tokens, generic_types, [Keyword.ARROW])
+def parse_generic_struct_type(
+    start_tok: Token,
+    tokens: List[Token],
+    concrete_types: List[DataType],
+    generic_types: List[DataType]
+) -> DataType:
 
     compiler_error(
         len(tokens) > 0,
-        tok,
+        start_tok,
         "Expected struct name, but found end of file instead."
     )
 
@@ -719,16 +722,16 @@ def parse_with_struct_as_type(start_tok: Token, tokens: List[Token], generic_typ
     )
 
     compiler_error(
-        len(type_list) == len(StructGenerics[gen_struct_t]),
+        len(concrete_types) == len(StructGenerics[gen_struct_t]),
         struct_tok,
         f"""Incorrect number of types provided.
     [Note]: `{struct_name}` is generic over {pretty_print_arg_list(StructGenerics[gen_struct_t])}
-    [Note]: These types were provided: {pretty_print_arg_list(type_list)}"""
+    [Note]: These types were provided: {pretty_print_arg_list(concrete_types)}"""
     )
 
-    concrete_name = f"{struct_name}{pretty_print_arg_list(type_list, open='<', close='>')}"
+    concrete_name = f"{struct_name}{pretty_print_arg_list(concrete_types, open='<', close='>')}"
     concrete_members = [T if not T.generic else
-                        type_list[indexOf(StructGenerics[gen_struct_t], T)] for T in StructMembers[gen_struct_t]]
+                        concrete_types[indexOf(StructGenerics[gen_struct_t], T)] for T in StructMembers[gen_struct_t]]
 
     TypeDict[concrete_name] = DataType(
         ident=concrete_name,
@@ -742,7 +745,19 @@ def parse_with_struct_as_type(start_tok: Token, tokens: List[Token], generic_typ
     return TypeDict[concrete_name]
 
 
-def parse_fn_ptr_type(start_tok: Token, tokens: List[Token], generic_types: List[DataType]) -> DataType:
+def parse_type_from_with_block(start_tok: Token, tokens: List[Token], generic_types: List[DataType]) -> DataType:
+    tok, type_list = parse_type_list(
+        start_tok, tokens, generic_types, [Keyword.ARROW, Keyword.FN_TYPE])
+
+    if tok.typ == Keyword.ARROW:
+        return parse_generic_struct_type(tok, tokens, type_list, generic_types)
+    elif tok.typ == Keyword.FN_TYPE:
+        return parse_fn_ptr_type(tok, tokens, type_list, generic_types)
+
+    assert False, "... Unreachable"
+
+
+def parse_fn_ptr_type(start_tok: Token, tokens: List[Token], concrete_types: List[DataType], generic_types: List[DataType]) -> DataType:
 
     tok, sig = parse_fn_signature(start_tok, tokens, generic_types)
     compiler_error(
@@ -777,8 +792,6 @@ def parse_type_list(
         f"Expected type list, but found end of file instead"
     )
 
-    assert Keyword.WITH not in delimiters, "Type Lists may have nested `WITH` statements, cannot use `WITH` as a delimiter."
-    assert Keyword.FN_TYPE not in delimiters, "Type Lists may have nested `&fn` statements. cannot use `&fn` as a delimiter."
     types: List[DataType] = []
     while True:
         end_tok, input_tokens = tokens_until_keywords(
@@ -799,17 +812,19 @@ def parse_type_list(
                     f"Unrecognized token `{tok.typ}:{tok.value}` in type list."
                 )
 
-        if end_tok.typ == Keyword.WITH:
-            struct_t = parse_with_struct_as_type(
+        if end_tok.typ in delimiters:
+            break
+        elif end_tok.typ == Keyword.WITH:
+            t = parse_type_from_with_block(
                 end_tok, tokens, generic_types)
-            types.append(struct_t)
+            types.append(t)
         elif end_tok.typ == Keyword.FN_TYPE:
             fn_ptr_t = parse_fn_ptr_type(
-                end_tok, tokens, generic_types)
+                end_tok, tokens, [], generic_types)
             types.append(fn_ptr_t)
             assert fn_ptr_t in TypeSignatures
         else:
-            break
+            assert False, "... unreachable"
 
     # print(pretty_print_arg_list(types))
 
@@ -877,6 +892,25 @@ def convert_to_concrete_arg_list(gen_list: List[DataType], concrete_types: List[
             )
             StructMembers[TypeDict[T_concrete_name]] = T_concrete_members
             type_list.append(TypeDict[T_concrete_name])
+        elif T.generic and T in TypeSignatures.keys():
+            sig = TypeSignatures[T]
+            pops = convert_to_concrete_arg_list(
+                sig.pops, concrete_types, generics)
+            puts = convert_to_concrete_arg_list(
+                sig.puts, concrete_types, generics
+            )
+            concrete_sig = Signature(pops, puts)
+            concrete_fn_ptr_name = f"fn{pretty_print_signature(concrete_sig)}"
+            if concrete_fn_ptr_name not in TypeDict:
+                TypeDict[concrete_fn_ptr_name] = DataType(
+                    ident=concrete_fn_ptr_name,
+                    generic=any(T.generic for T in concrete_types),
+                    fnptr=T.fnptr
+                )
+
+                TypeSignatures[TypeDict[concrete_fn_ptr_name]] = concrete_sig
+
+            type_list.append(TypeDict[concrete_fn_ptr_name])
         elif T.generic:
             type_list.append(concrete_types[indexOf(generics, T)])
         else:
