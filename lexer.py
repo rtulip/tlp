@@ -10,6 +10,8 @@ from typing import Union, Tuple, List, Dict, Optional, Any
 Define the list of keywords to search for with the lexer.
 """
 
+WORD_REGEX = "[^0-9\s]\S*"
+
 
 @unique
 class Keyword(Enum):
@@ -60,10 +62,11 @@ class Intrinsic(Enum):
     DROP = 'drop'
     SWAP = 'swap'
     SPLIT = 'split'
-    CAST = 'cast\([a-zA-Z]\w*\)'
+    CAST = f'cast\({WORD_REGEX}\)'
     INNER_TUPLE = 'group\.[0-9]+'
     CAST_TUPLE = 'group'
-    SIZE_OF = 'SizeOf\([a-zA-Z]\w*\)'
+    SIZE_OF = f'SizeOf\({WORD_REGEX}\)'
+    ADDR_OF = f"&{WORD_REGEX}"
     SYSCALL0 = 'syscall0'
     SYSCALL1 = 'syscall1'
     SYSCALL2 = 'syscall2'
@@ -144,19 +147,19 @@ class PatternHolder:
 
         # Search for Keywords next
         for kw in self.keywords:
-            match = re.search("^" + kw.value, line)
+            match = re.search("^" + kw.value + "(?=$|\s)", line)
             if match:
                 return (kw, match)
 
         # Search for Intrinsics next
         for oper in self.Intrinsics:
-            match = re.search("^" + oper.value, line)
+            match = re.search("^" + oper.value + "(?=$|\s)", line)
             if match:
                 return (oper, match)
 
         # Finally look for intermediate representation values
         for ir in self.intermediate_repr:
-            match = re.search("^" + ir.value, line)
+            match = re.search("^" + ir.value + "(?=$|\s)", line)
             if match:
                 return (ir, match)
 
@@ -188,9 +191,10 @@ def to_value(s: str, tok: TokenType) -> Any:
             return s[7:-1]
         elif tok == Intrinsic.INNER_TUPLE:
             return int(s[s.find('.')+1:])
+        elif tok == Intrinsic.ADDR_OF:
+            return s[1:]
         else:
             return None
-
     elif isinstance(tok, MiscTokenKind):
         if tok == MiscTokenKind.INT:
             return int(s)

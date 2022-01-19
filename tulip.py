@@ -28,6 +28,7 @@ class DataType:
     generic: bool = False
     struct: bool = False
     size: int = 1
+    fn_name: Optional[str] = None
 
 
 INT = DataType("int")
@@ -128,7 +129,7 @@ signatures = {
     # Intrinsic.CAST creates signatures dynamically based on the struct
     # Intrinsic.INNER_TUPLE creates a signature dynamically based on the tuple on the top of the stack.
     # Intrinsic.CAST_TUPLE  creates signatures dynamically based on the number of elements asked to group
-
+    # Intrinsic.ADDR_OF creates a new type based on the function specified.
     Intrinsic.SYSCALL0: Signature(pops=[INT], puts=[INT]),
     Intrinsic.SYSCALL1: Signature(pops=[A, INT], puts=[INT]),
     Intrinsic.SYSCALL2: Signature(pops=[A, B, INT], puts=[INT]),
@@ -139,7 +140,7 @@ signatures = {
 
 }
 
-N_DYNAMIC_INTRINSICS = 4
+N_DYNAMIC_INTRINSICS = 5
 N_IGNORED_OP = 1
 N_SUM_IGNORE = N_DYNAMIC_INTRINSICS + N_IGNORED_OP
 assert len(signatures) == len(OpType) - N_SUM_IGNORE + len(Intrinsic), \
@@ -1714,9 +1715,16 @@ def type_check_cond_jump(
 def pretty_print_arg_list(arg_list: List[DataType], open="[", close="]") -> str:
     s = open
     for t in arg_list[:-1]:
-        s += f"{t.ident} "
+        if t.fn_name is not None:
+            s += f"{t.ident}<{t.fn_name}> "
+        else:
+            s += f"{t.ident} "
     if len(arg_list) > 0:
-        s += f"{arg_list[-1].ident}"
+        t = arg_list[-1]
+        if t.fn_name is not None:
+            s += f"{t.ident}<{t.fn_name}>"
+        else:
+            s += f"{t.ident}"
     s += close
     return s
 
@@ -2107,6 +2115,7 @@ def type_check_program(
             if op.op == OpType.INTRINSIC:
                 assert isinstance(op.operand, Intrinsic)
 
+                assert N_DYNAMIC_INTRINSICS == 5
                 if op.tok.typ == Intrinsic.CAST:
                     compiler_error(
                         op.tok.value in TypeDict.keys(),
@@ -2237,6 +2246,24 @@ def type_check_program(
                         pops=[t],
                         puts=StructMembers[t]
                     )
+                elif op.tok.typ == Intrinsic.ADDR_OF:
+                    compiler_error(
+                        op.tok.value in fn_meta.keys(),
+                        op.tok,
+                        f"Unknown function `{op.tok.value}`"
+                    )
+
+                    fn_ptr_t = DataType(
+                        ident='fnptr',
+                        generic=len(fn_meta[op.tok.value].generics) > 0,
+                        fn_name=op.tok.value,
+                    )
+
+                    sig = Signature(
+                        pops=[],
+                        puts=[fn_ptr_t]
+                    )
+
                 else:
                     sig = signatures[op.operand]
 
@@ -2526,6 +2553,12 @@ def compile_ops(out, ip, program: Program, fn_meta, reserved_memory, strings) ->
                     f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
                 out.write(
                     f"    push    {TypeDict[op.tok.value].size * 8}\n")
+            elif op.operand == Intrinsic.ADDR_OF:
+                out.write(
+                    f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+                out.write(
+                    f"    mov     rax, fn_{indexOf(list(fn_meta), op.tok.value)}\n")
+                out.write(f"    push    rax\n")
             elif op.operand == Intrinsic.SYSCALL0:
                 out.write(f";; --- {op.op} {op.operand} --- \n")
                 out.write(f"    pop     rax\n")  # SYSCALL NUM
