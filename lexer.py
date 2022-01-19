@@ -22,6 +22,7 @@ class Keyword(Enum):
     END = "end"
     WHILE = "while"
     FN = "fn"
+    FN_TYPE = "&fn"
     STRUCT = "struct"
     ARROW = "->"
     INCLUDE = 'use'

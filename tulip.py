@@ -28,7 +28,7 @@ class DataType:
     generic: bool = False
     struct: bool = False
     size: int = 1
-    fn_name: Optional[str] = None
+    fnptr: Optional[str] = None
 
 
 INT = DataType("int")
@@ -71,6 +71,7 @@ class Signature:
     rputs: ArgList = field(default_factory=lambda: [])
 
 
+TypeSignatures: Dict[DataType, Signature] = {}
 Program = List[Op]
 
 
@@ -741,6 +742,27 @@ def parse_with_struct_as_type(start_tok: Token, tokens: List[Token], generic_typ
     return TypeDict[concrete_name]
 
 
+def parse_fn_ptr_type(start_tok: Token, tokens: List[Token], generic_types: List[DataType]) -> DataType:
+
+    tok, sig = parse_fn_signature(start_tok, tokens, generic_types)
+    compiler_error(
+        tok.typ == Keyword.END,
+        tok,
+        f"Unexpected keyword `{tok.typ}`. Expected `END`"
+    )
+
+    t = DataType(
+        ident=f'fn{pretty_print_signature(sig)}',
+        generic=len(generic_types) > 0,
+    )
+
+    if t not in TypeSignatures.keys():
+        TypeSignatures[t] = sig
+
+    assert t in TypeSignatures.keys()
+    return t
+
+
 def parse_type_list(
     start_tok: Token,
     tokens: List[Token],
@@ -756,11 +778,11 @@ def parse_type_list(
     )
 
     assert Keyword.WITH not in delimiters, "Type Lists may have nested `WITH` statements, cannot use `WITH` as a delimiter."
-
+    assert Keyword.FN_TYPE not in delimiters, "Type Lists may have nested `&fn` statements. cannot use `&fn` as a delimiter."
     types: List[DataType] = []
     while True:
         end_tok, input_tokens = tokens_until_keywords(
-            start_tok, tokens, delimiters + [Keyword.WITH])
+            start_tok, tokens, delimiters + [Keyword.WITH, Keyword.FN_TYPE])
 
         for tok in input_tokens:
             if tok.value in TypeDict.keys():
@@ -781,8 +803,15 @@ def parse_type_list(
             struct_t = parse_with_struct_as_type(
                 end_tok, tokens, generic_types)
             types.append(struct_t)
+        elif end_tok.typ == Keyword.FN_TYPE:
+            fn_ptr_t = parse_fn_ptr_type(
+                end_tok, tokens, generic_types)
+            types.append(fn_ptr_t)
+            assert fn_ptr_t in TypeSignatures
         else:
             break
+
+    # print(pretty_print_arg_list(types))
 
     return (end_tok, types)
 
@@ -1716,17 +1745,18 @@ def type_check_cond_jump(
 def pretty_print_arg_list(arg_list: List[DataType], open="[", close="]") -> str:
     s = open
     for t in arg_list[:-1]:
-        if t.fn_name is not None:
-            s += f"{t.ident}<{t.fn_name}> "
-        else:
-            s += f"{t.ident} "
+        s += f"{t.ident} "
     if len(arg_list) > 0:
         t = arg_list[-1]
-        if t.fn_name is not None:
-            s += f"{t.ident}<{t.fn_name}>"
-        else:
-            s += f"{t.ident}"
+        s += f"{t.ident}"
     s += close
+    return s
+
+
+def pretty_print_signature(sig: Signature, pops_open="(", pops_close=")", puts_open='[', puts_close=']') -> str:
+    s = pretty_print_arg_list(sig.pops, open=pops_open, close=pops_close)
+    s += " -> "
+    s += pretty_print_arg_list(sig.puts, open=puts_open, close=puts_close)
     return s
 
 
@@ -1847,6 +1877,11 @@ def assign_sizes(op: Op, sig: Signature):
         op.tok.value = sig.rpops[0].size
 
 
+def check_args_match(args: ArgList, stack: ArgList) -> bool:
+    return [DataType(T.ident, T.generic, T.struct, T.size) for T in args] == \
+           [DataType(T.ident, T.generic, T.struct, T.size) for T in stack]
+
+
 def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType], return_stack: List[DataType]):
 
     assert True if len(sig.pops) == 0 else [not T.generic for T in sig.pops], \
@@ -1860,7 +1895,7 @@ def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType], retur
 
     assign_sizes(op, sig)
     if len(sig.pops) > 0:
-        if type_stack[-len(sig.pops):] == sig.pops:
+        if check_args_match(sig.pops, type_stack[-len(sig.pops):]):
             for _ in sig.pops:
                 type_stack.pop()
         else:
@@ -1875,7 +1910,7 @@ def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType], retur
             )
 
     if len(sig.rpops) > 0:
-        if return_stack[-len(sig.rpops):] == sig.rpops:
+        if check_args_match(sig.rpops, return_stack[-len(sig.rpops):]):
             for _ in sig.rpops:
                 return_stack.pop()
         else:
@@ -2254,10 +2289,13 @@ def type_check_program(
                     )
 
                     fn_ptr_t = DataType(
-                        ident='fnptr',
+                        ident=f'fn{pretty_print_signature(fn_meta[op.tok.value].signature)}',
                         generic=len(fn_meta[op.tok.value].generics) > 0,
-                        fn_name=op.tok.value,
+                        fnptr=op.tok.value
                     )
+
+                    if fn_ptr_t not in TypeSignatures:
+                        TypeSignatures[fn_ptr_t] = fn_meta[op.tok.value].signature
 
                     sig = Signature(
                         pops=[],
@@ -2272,12 +2310,11 @@ def type_check_program(
 
                     t = type_stack.pop()
                     compiler_error(
-                        t.fn_name is not None,
+                        t in TypeSignatures.keys(),
                         op.tok,
                         f"Expected function pointer on the top of the stack, but found `{t.ident}` instead"
                     )
-                    assert t.fn_name is not None
-                    sig = fn_meta[t.fn_name].signature
+                    sig = TypeSignatures[t]
                 else:
                     sig = signatures[op.operand]
 
