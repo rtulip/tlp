@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/generics/with_eof.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/generics/with_eof.tlp:1:1 [ERROR]: Expected generic type identifiers after `WITH`, but found end of file instead.
+--------------------------
+exit code: 1

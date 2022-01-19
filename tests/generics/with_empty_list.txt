@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/generics/with_empty_list.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/generics/with_empty_list.tlp:1:1 [ERROR]: `WITH` statement must include at least one generic type identifier.
+--------------------------
+exit code: 1

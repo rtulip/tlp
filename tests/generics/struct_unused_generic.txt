@@ -1,0 +1,8 @@
+args: ['python3', 'tulip.py', './tests/generics/struct_unused_generic.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/generics/struct_unused_generic.tlp:2:1 [ERROR]: Unused generic identifier `A`.
+    [Note]: Consider removing it from the `WITH` statement above
+--------------------------
+exit code: 1

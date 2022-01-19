@@ -1,0 +1,41 @@
+use "std.tlp"
+
+with A B
+struct Foo
+    A B
+end
+
+with T
+fn bar
+    T
+do
+    cast(int) putu   
+end
+
+with T
+fn gen_drop
+    with T T -> Foo
+do
+    drop
+end
+
+with A B
+fn makes_foo
+    A B 
+    ->
+    with A B -> Foo
+    A B
+do
+    cast(Foo)
+    dup
+    split
+end
+
+5 cast(ptr) 
+with ptr do bar
+10 with int do bar
+true with bool do bar
+
+1 "Hello World\n"
+with int Str do makes_foo
+puts putu split puts putu
