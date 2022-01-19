@@ -66,6 +66,7 @@ class Intrinsic(Enum):
     INNER_TUPLE = 'group\.[0-9]+'
     CAST_TUPLE = 'group'
     SIZE_OF = f'SizeOf\({WORD_REGEX}\)'
+    CALL = "call"
     ADDR_OF = f"&{WORD_REGEX}"
     SYSCALL0 = 'syscall0'
     SYSCALL1 = 'syscall1'

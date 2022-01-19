@@ -130,6 +130,7 @@ signatures = {
     # Intrinsic.INNER_TUPLE creates a signature dynamically based on the tuple on the top of the stack.
     # Intrinsic.CAST_TUPLE  creates signatures dynamically based on the number of elements asked to group
     # Intrinsic.ADDR_OF creates a new type based on the function specified.
+    # Intrinsic.CALL creates a new signature dynamically.
     Intrinsic.SYSCALL0: Signature(pops=[INT], puts=[INT]),
     Intrinsic.SYSCALL1: Signature(pops=[A, INT], puts=[INT]),
     Intrinsic.SYSCALL2: Signature(pops=[A, B, INT], puts=[INT]),
@@ -140,7 +141,7 @@ signatures = {
 
 }
 
-N_DYNAMIC_INTRINSICS = 5
+N_DYNAMIC_INTRINSICS = 6
 N_IGNORED_OP = 1
 N_SUM_IGNORE = N_DYNAMIC_INTRINSICS + N_IGNORED_OP
 assert len(signatures) == len(OpType) - N_SUM_IGNORE + len(Intrinsic), \
@@ -2115,8 +2116,8 @@ def type_check_program(
             if op.op == OpType.INTRINSIC:
                 assert isinstance(op.operand, Intrinsic)
 
-                assert N_DYNAMIC_INTRINSICS == 5
-                if op.tok.typ == Intrinsic.CAST:
+                assert N_DYNAMIC_INTRINSICS == 6
+                if op.operand == Intrinsic.CAST:
                     compiler_error(
                         op.tok.value in TypeDict.keys(),
                         op.tok,
@@ -2161,7 +2162,7 @@ def type_check_program(
                                 op.tok,
                                 f"Cannot cast to built in type {t.ident}"
                             )
-                elif op.tok.typ == Intrinsic.CAST_TUPLE:
+                elif op.operand == Intrinsic.CAST_TUPLE:
                     global TUPLE_IDENT_COUNT
                     n = op.tok.value
 
@@ -2196,8 +2197,7 @@ def type_check_program(
                     )
 
                     TUPLE_IDENT_COUNT += 1
-
-                elif op.tok.typ == Intrinsic.INNER_TUPLE:
+                elif op.operand == Intrinsic.INNER_TUPLE:
                     compiler_error(
                         len(type_stack) > 0,
                         op.tok,
@@ -2226,7 +2226,7 @@ def type_check_program(
                     )
 
                     op.tok.value = (op.tok.value, t)
-                elif op.tok.typ == Intrinsic.SPLIT:
+                elif op.operand == Intrinsic.SPLIT:
                     compiler_error(
                         len(type_stack) > 0,
                         op.tok,
@@ -2246,7 +2246,7 @@ def type_check_program(
                         pops=[t],
                         puts=StructMembers[t]
                     )
-                elif op.tok.typ == Intrinsic.ADDR_OF:
+                elif op.operand == Intrinsic.ADDR_OF:
                     compiler_error(
                         op.tok.value in fn_meta.keys(),
                         op.tok,
@@ -2263,7 +2263,21 @@ def type_check_program(
                         pops=[],
                         puts=[fn_ptr_t]
                     )
+                elif op.operand == Intrinsic.CALL:
+                    compiler_error(
+                        len(type_stack) > 0,
+                        op.tok,
+                        f"{op.op}:{op.operand} Expects the top element of the stack to be a function pointer. Stack was empty."
+                    )
 
+                    t = type_stack.pop()
+                    compiler_error(
+                        t.fn_name is not None,
+                        op.tok,
+                        f"Expected function pointer on the top of the stack, but found `{t.ident}` instead"
+                    )
+                    assert t.fn_name is not None
+                    sig = fn_meta[t.fn_name].signature
                 else:
                     sig = signatures[op.operand]
 
@@ -2559,6 +2573,16 @@ def compile_ops(out, ip, program: Program, fn_meta, reserved_memory, strings) ->
                 out.write(
                     f"    mov     rax, fn_{indexOf(list(fn_meta), op.tok.value)}\n")
                 out.write(f"    push    rax\n")
+            elif op.operand == Intrinsic.CALL:
+                out.write(
+                    f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
+                out.write(f";; --- {op.op} {op.operand} --- \n")
+                out.write(f"    pop     rbx\n")
+                out.write(f"    mov     rax, rsp\n")
+                out.write(f"    mov     rsp, [ret_stack_rsp]\n")
+                out.write(f"    call    rbx\n")
+                out.write(f"    mov     [ret_stack_rsp], rsp\n")
+                out.write(f"    mov     rsp, rax\n")
             elif op.operand == Intrinsic.SYSCALL0:
                 out.write(f";; --- {op.op} {op.operand} --- \n")
                 out.write(f"    pop     rax\n")  # SYSCALL NUM
