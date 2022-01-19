@@ -236,6 +236,7 @@ def tokens_until_keywords(
 def parse_tokens_until_keywords(
     tokens: List[Token],
     expected_keywords: List[Keyword],
+    generic_types: List[DataType],
     program: Program,
     fn_meta: FunctionMeta,
     const_values: ConstMap,
@@ -353,6 +354,7 @@ def parse_tokens_until_keywords(
                 parse_if_block_from_tokens(
                     tok,
                     tokens,
+                    generic_types,
                     program,
                     fn_meta,
                     const_values,
@@ -362,6 +364,7 @@ def parse_tokens_until_keywords(
                 parse_while_block_from_tokens(
                     tok,
                     tokens,
+                    generic_types,
                     program,
                     fn_meta,
                     const_values,
@@ -388,7 +391,14 @@ def parse_tokens_until_keywords(
                     tok,
                     tokens,
                 )
-                call_generic_fn_with(tok, tokens, types, program)
+                call_generic_fn_with(
+                    tok,
+                    tokens,
+                    fn_meta,
+                    types,
+                    generic_types,
+                    program
+                )
             else:
 
                 compiler_error(
@@ -555,6 +565,7 @@ def parse_reserve_statement(
     tok = parse_tokens_until_keywords(
         tokens,
         [Keyword.END],
+        [],
         const_expr,
         fn_meta,
         const_values,
@@ -631,6 +642,7 @@ def parse_const_expr(
     parse_tokens_until_keywords(
         tokens,
         [Keyword.END],
+        [],
         const_ops,
         fn_meta,
         const_values,
@@ -842,7 +854,60 @@ def convert_to_concrete_arg_list(gen_list: List[DataType], concrete_types: List[
     return type_list
 
 
-def call_generic_fn_with(start_tok: Token, tokens: List[Token], concrete_types: List[DataType], program: Program):
+def fn_reduce_generics(fn_name: str, fn_meta: FunctionMeta, concrete_types: List[DataType], generic_types: List[DataType]) -> str:
+    if '<' in fn_name and '>' == fn_name[-1]:
+        fn_generics = fn_meta[fn_name].generics
+        fn_assignment_tag = fn_name[indexOf(fn_name, '<'):]
+        for G in fn_generics:
+            fn_assignment_tag = fn_assignment_tag.replace(
+                G.ident, concrete_types[indexOf(fn_generics, G)].ident)
+        concrete_name = f"{fn_name[:indexOf(fn_name, '<')]}{fn_assignment_tag}"
+    else:
+        concrete_name = f"{fn_name}{pretty_print_arg_list(concrete_types, '<', '>')}"
+
+    if concrete_name not in fn_meta.keys():
+        fn_sig = fn_meta[fn_name].signature
+        fn_generics = fn_meta[fn_name].generics
+        pops = convert_to_concrete_arg_list(
+            fn_sig.pops,
+            concrete_types,
+            fn_generics
+        )
+        puts = convert_to_concrete_arg_list(
+            fn_sig.puts,
+            concrete_types,
+            fn_generics
+        )
+        concrete_sig = Signature(pops, puts)
+
+        fn_meta[concrete_name] = Function(
+            concrete_name,
+            deepcopy(fn_meta[fn_name].tok),
+            generics=generic_types,
+            signature=concrete_sig,
+            stub=False,
+            program=deepcopy(fn_meta[fn_name].program)
+        )
+
+        if len(generic_types) == 0:
+            for op in fn_meta[concrete_name].program:
+                if op.op == OpType.CALL:
+                    assert op.operand is not None
+                    if len(fn_meta[op.operand].generics) > 0:
+                        op.operand = fn_reduce_generics(
+                            op.operand, fn_meta, concrete_types, generic_types)
+
+    return concrete_name
+
+
+def call_generic_fn_with(
+    start_tok: Token,
+    tokens: List[Token],
+    fn_meta: FunctionMeta,
+    concrete_types: List[DataType],
+    generic_types: List[DataType],
+    program: Program
+):
     fn_tok = tokens.pop()
 
     compiler_error(
@@ -880,36 +945,14 @@ def call_generic_fn_with(start_tok: Token, tokens: List[Token], concrete_types: 
     )
 
     compiler_error(
-        not any(T.generic for T in concrete_types),
+        not any(T.generic and T not in generic_types for T in concrete_types),
         fn_tok,
         f"""Calling generic functions requires providing concrete types.
     [Note]: The following types are generic: {pretty_print_arg_list([T for T in concrete_types if T.generic])}"""
     )
 
-    concrete_name = f"{fn_name}{pretty_print_arg_list(concrete_types, '<', '>')}"
-    if concrete_name not in fn_meta.keys():
-        fn_sig = fn_meta[fn_name].signature
-        fn_generics = fn_meta[fn_name].generics
-        pops = convert_to_concrete_arg_list(
-            fn_sig.pops,
-            concrete_types,
-            fn_generics
-        )
-        puts = convert_to_concrete_arg_list(
-            fn_sig.puts,
-            concrete_types,
-            fn_generics
-        )
-        concrete_sig = Signature(pops, puts)
-
-        fn_meta[concrete_name] = Function(
-            concrete_name,
-            deepcopy(fn_meta[fn_name].tok),
-            generics=[],
-            signature=concrete_sig,
-            stub=False,
-            program=deepcopy(fn_meta[fn_name].program)
-        )
+    concrete_name = fn_reduce_generics(
+        fn_name, fn_meta, concrete_types, generic_types)
 
     program.append(Op(
         OpType.CALL,
@@ -1014,6 +1057,7 @@ def parse_fn_from_tokens(
         tok_to_end = parse_tokens_until_keywords(
             tokens,
             [Keyword.END],
+            generic_types,
             program,
             fn_meta,
             const_values,
@@ -1208,6 +1252,7 @@ def parse_struct_from_tokens(
 def parse_if_block_from_tokens(
     start_tok: Token,
     tokens: List[Token],
+    generic_types: List[DataType],
     program: Program,
     fn_meta: FunctionMeta,
     const_values: ConstMap,
@@ -1231,6 +1276,7 @@ def parse_if_block_from_tokens(
     tok_do = parse_tokens_until_keywords(
         tokens,
         [Keyword.DO],
+        generic_types,
         program,
         fn_meta,
         const_values,
@@ -1268,6 +1314,7 @@ def parse_if_block_from_tokens(
         tok = parse_tokens_until_keywords(
             tokens,
             expected_keywords,
+            generic_types,
             program,
             fn_meta,
             const_values,
@@ -1315,6 +1362,7 @@ def parse_if_block_from_tokens(
             tok_next = parse_tokens_until_keywords(
                 tokens,
                 [Keyword.DO, Keyword.END],
+                generic_types,
                 program,
                 fn_meta,
                 const_values,
@@ -1375,6 +1423,7 @@ def parse_if_block_from_tokens(
 def parse_while_block_from_tokens(
     start_tok: Token,
     tokens: List[Token],
+    generic_types: List[DataType],
     program: Program,
     fn_meta: FunctionMeta,
     const_values: ConstMap,
@@ -1399,6 +1448,7 @@ def parse_while_block_from_tokens(
     tok = parse_tokens_until_keywords(
         tokens,
         [Keyword.DO],
+        generic_types,
         program,
         fn_meta,
         const_values,
@@ -1432,6 +1482,7 @@ def parse_while_block_from_tokens(
     tok = parse_tokens_until_keywords(
         tokens,
         [Keyword.END],
+        generic_types,
         program,
         fn_meta,
         const_values,
@@ -1489,9 +1540,11 @@ def program_from_tokens(
 
     while len(tokens) > 0:
 
+        types: List[DataType] = []
         tok = parse_tokens_until_keywords(
             tokens,
             expected_keywords,
+            types,
             program,
             fn_meta,
             const_values,
@@ -1502,7 +1555,6 @@ def program_from_tokens(
         assert len(
             expected_keywords) == 4, "Exhaustive handling of expected keywords"
 
-        types: List[DataType] = []
         if tok.typ == Keyword.WITH:
             tok, types = parse_with_block_from_tokens(
                 tok,
@@ -1536,7 +1588,7 @@ def program_from_tokens(
                 reserved_memory
             )
         elif tok.typ == Keyword.DO and len(types) > 0:
-            call_generic_fn_with(tok, tokens, types, program)
+            call_generic_fn_with(tok, tokens, fn_meta, types, [], program)
         elif len(tokens) == 0:
             break
         else:
