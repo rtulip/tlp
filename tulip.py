@@ -730,8 +730,10 @@ def parse_generic_struct_type(
     )
 
     concrete_name = f"{struct_name}{pretty_print_arg_list(concrete_types, open='<', close='>')}"
-    concrete_members = [T if not T.generic else
-                        concrete_types[indexOf(StructGenerics[gen_struct_t], T)] for T in StructMembers[gen_struct_t]]
+    concrete_members = convert_to_concrete_arg_list(
+        StructMembers[gen_struct_t], concrete_types, StructGenerics[gen_struct_t])
+    # [T if not T.generic else
+    # concrete_types[indexOf(StructGenerics[gen_struct_t], T)] for T in StructMembers[gen_struct_t]]
 
     TypeDict[concrete_name] = DataType(
         ident=concrete_name,
@@ -881,8 +883,8 @@ def convert_to_concrete_arg_list(gen_list: List[DataType], concrete_types: List[
                     G.ident, concrete_types[indexOf(T_generics, G)].ident)
 
             T_concrete_name = f"{T.ident[:indexOf(T.ident, '<')]}{T_assignment_tag}"
-            T_concrete_members = [T if not T.generic else concrete_types[indexOf(
-                T_generics, T)] for T in T_members]
+            T_concrete_members = convert_to_concrete_arg_list(
+                T_members, concrete_types, T_generics)
 
             TypeDict[T_concrete_name] = DataType(
                 ident=T_concrete_name,
@@ -1253,45 +1255,29 @@ def parse_struct_from_tokens(
 
     assert isinstance(name_tok.value, str)
 
-    end_tok, member_tokens = tokens_until_keywords(
-        name_tok, tokens, [Keyword.END]
+    end_tok, members = parse_type_list(
+        name_tok, tokens, generic_types, [Keyword.END]
     )
 
     compiler_error(
-        len(member_tokens) > 0,
+        len(members) > 0,
         end_tok,
         "Structs must have at least one member"
     )
 
-    members: List[DataType] = []
-    for tok in member_tokens:
-        compiler_error(
-            tok.typ == MiscTokenKind.WORD,
-            tok,
-            f"Expected `WORD` in Struct `{name_tok.value}` member list. Found {tok.typ}:{tok.value} instead"
-        )
-
-        assert isinstance(tok.value, str)
-        compiler_error(
-            tok.value in TypeDict.keys() or
-            tok.value in [T.ident for T in generic_types],
-            tok,
-            f"""Unrecognized type in `Struct` definition: `{tok.value}`
-    [Note]: You may want to include `{tok.value}` in a `WITH` block before struct definition."""
-        )
-
-        if tok.value in TypeDict.keys():
-            members.append(
-                TypeDict[tok.value]
-            )
-        elif tok.value in [T.ident for T in generic_types]:
-            members.append(
-                [T for T in generic_types if T.ident == tok.value][0]
-            )
+    # Todo make it so that this can nest indefiniately.
+    types_in_members = [T for T in members if T not in TypeSignatures.keys()]
+    fn_ptrs_in_members = [T for T in members if T in TypeSignatures.keys()]
+    for T in fn_ptrs_in_members:
+        pops = TypeSignatures[T].pops
+        puts = TypeSignatures[T].puts
+        types_in_members += [P for P in pops]
+        types_in_members += [P for P in puts]
+    types_in_members = list(set(types_in_members))
 
     for T in generic_types:
         compiler_error(
-            T in members,
+            T in types_in_members,
             start_tok,
             f"""Unused generic identifier `{T.ident}`.
     [Note]: Consider removing it from the `WITH` statement above"""
@@ -1300,7 +1286,7 @@ def parse_struct_from_tokens(
     new_struct = DataType(
         ident=name_tok.value,
         struct=True,
-        generic=len(generic_types) > 1,
+        generic=len(generic_types) > 0,
         size=sum(member.size for member in members)
     )
     TypeDict[new_struct.ident] = new_struct
@@ -1982,7 +1968,68 @@ def generate_concrete_struct(op: Op, type_stack: List[DataType]) -> DataType:
     concrete_members: List[DataType] = []
     generic_map: Dict[DataType, DataType] = {}
     for i, t in enumerate(members):
-        if t.generic:
+        if t.generic and t in TypeSignatures.keys():
+            compiler_error(
+                type_stack[-len(members) + i] in TypeSignatures,
+                op.tok,
+                f"""Generic Type resolution Failure.
+    [Note]: Expected funtion poiner like: {t.ident}.
+    [Note]: Type `{type_stack[-len(members) + i]}` was found instead."""
+            )
+
+            pops = convert_to_concrete_arg_list(
+                TypeSignatures[t].pops,
+                TypeSignatures[type_stack[-len(members) + i]].pops,
+                generics
+            )
+            puts = convert_to_concrete_arg_list(
+                TypeSignatures[t].puts,
+                TypeSignatures[type_stack[-len(members) + i]].puts,
+                generics
+            )
+
+            for concrete_pop, gen_pop in zip(pops, TypeSignatures[t].pops):
+                if gen_pop.generic:
+                    if gen_pop in generic_map.keys():
+                        compiler_error(
+                            generic_map[gen_pop] == concrete_pop,
+                            op.tok,
+                            f"""Generic Type Resolution Failure.
+    [Note]: Generic `{T.ident}` was assigned `{generic_map[gen_pop].ident}` yet `{concrete_pop.ident}` was found
+    [Note]: Signature: {pretty_print_arg_list(members)}
+    [Note]: Stack    : {pretty_print_arg_list(type_stack[-len(members):])}"""
+                        )
+                    else:
+                        generic_map[gen_pop] = concrete_pop
+
+            for concrete_put, gen_put in zip(puts, TypeSignatures[t].puts):
+                if gen_put.generic:
+                    if gen_put in generic_map.keys():
+                        compiler_error(
+                            generic_map[gen_put] == concrete_put,
+                            op.tok,
+                            f"""Generic Type Resolution Failure.
+    [Note]: Generic `{T.ident}` was assigned `{generic_map[gen_put].ident}` yet `{concrete_put.ident}` was found
+    [Note]: Signature: {pretty_print_arg_list(members)}
+    [Note]: Stack    : {pretty_print_arg_list(type_stack[-len(members):])}"""
+                        )
+                    else:
+                        generic_map[gen_put] = concrete_put
+
+            sig = Signature(pops, puts)
+            concrete_name = f"fn{pretty_print_signature(sig)}"
+            if concrete_name not in TypeDict.keys():
+                TypeDict[concrete_name] = DataType(
+                    ident=concrete_name,
+                    fnptr=type_stack[-len(members) + i].fnptr
+                )
+
+                TypeSignatures[TypeDict[concrete_name]] = sig
+
+            concrete_members.append(TypeDict[concrete_name])
+
+        elif t.generic:
+
             assert t in generics
             concrete_type = type_stack[-len(members) + i]
             if t in generic_map.keys():
@@ -1992,8 +2039,7 @@ def generate_concrete_struct(op: Op, type_stack: List[DataType]) -> DataType:
                     f"""Generic Type Resolution Failure.
     [Note]: Generic `{T.ident}` was assigned `{generic_map[t].ident}` yet `{concrete_type.ident}` was found
     [Note]: Signature: {pretty_print_arg_list(members)}
-    [Note]: Stack    : {pretty_print_arg_list(type_stack[-len(members):])}
-    """
+    [Note]: Stack: {pretty_print_arg_list(type_stack[-len(members):])}"""
                 )
             else:
                 generic_map[t] = concrete_type
@@ -2028,7 +2074,7 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
         len(type_stack) >= n_args_expected,
         op.tok,
         f"""
-        Operation {op.op}:{op.operand} Requires {n_args_expected} arguments. {len(type_stack)} found.
+        Operation {op.op}: {op.operand} Requires {n_args_expected} arguments. {len(type_stack)} found.
         [Note]: Expected {pretty_print_arg_list(sig.pops)}
         [Note]: Found    {pretty_print_arg_list(type_stack)}
         """
@@ -2038,7 +2084,7 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
         len(return_stack) >= n_rargs_expected,
         op.tok,
         f"""
-        Operation {op.op}:{op.operand} Requires {n_rargs_expected} pushed arguments. {len(return_stack)} found.
+        Operation {op.op}: {op.operand} Requires {n_rargs_expected} pushed arguments. {len(return_stack)} found.
         [Note]: Expected {pretty_print_arg_list(sig.rpops)}
         [Note]: Found    {pretty_print_arg_list(return_stack)}
         """
@@ -2057,9 +2103,9 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
                         ),
                         op.tok,
                         f"""
-    Didn't find a matching signature for {op.op}:{op.operand}.
+    Didn't find a matching signature for {op.op}: {op.operand}.
     Expected: {pretty_print_arg_list(sig.pops)}
-    Found   : {pretty_print_arg_list(type_stack[-len(sig.pops):])}"""
+    Found: {pretty_print_arg_list(type_stack[-len(sig.pops):])}"""
                     )
 
                 generic_map[T] = type_stack[-n_args_expected:][i]
@@ -2071,7 +2117,7 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
     Generic Type Resolution Failure.
     [Note]: Generic `{T.ident}` was assigned `{generic_map[T].ident}` yet `{type_stack[-n_args_expected:][i].ident}` was found
     [Note]: Signature: {pretty_print_arg_list(sig.pops)}
-    [Note]: Stack    : {pretty_print_arg_list(type_stack[-n_args_expected:])}
+    [Note]: Stack: {pretty_print_arg_list(type_stack[-n_args_expected:])}
                     """
                 )
 
@@ -2087,7 +2133,7 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
     Generic Type Resolution Failure.
     [Note]: Generic `{T.ident}` was assigned `{generic_map[T].ident}` yet `{return_stack[-n_rargs_expected:][i].ident}` was found
     [Note]: Signature: {pretty_print_arg_list(sig.rpops)}
-    [Note]: Stack    : {pretty_print_arg_list(return_stack[-n_rargs_expected:])}
+    [Note]: Stack: {pretty_print_arg_list(return_stack[-n_rargs_expected:])}
                     """
                 )
 
@@ -2125,7 +2171,7 @@ def type_check_fn(fn: Function, fn_meta: FunctionMeta):
         f"""
     Function `{fn.ident}` output doesn't match signature.
     [Note]: Expected Output Stack: {pretty_print_arg_list(puts)}
-    [Note]: Actual Output Stack  : {pretty_print_arg_list(out_stack)}
+    [Note]: Actual Output Stack: {pretty_print_arg_list(out_stack)}
         """
     )
 
@@ -2834,3 +2880,4 @@ if __name__ == "__main__":
         compile_program("output", program, fn_meta, reserved_memory)
     else:
         print("Empty Program...")
+        exit(1)

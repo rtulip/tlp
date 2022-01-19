@@ -2,7 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/struct_unknown_type_in_bo
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/struct_unknown_type_in_body.tlp:1:12 [ERROR]: Unrecognized type in `Struct` definition: `bar`
-    [Note]: You may want to include `bar` in a `WITH` block before struct definition.
+./tests/compiler_errors/struct_unknown_type_in_body.tlp:1:12 [ERROR]: Unrecognized token `MiscTokenKind.WORD:bar` in type list.
 --------------------------
 exit code: 1

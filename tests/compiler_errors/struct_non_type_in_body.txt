@@ -2,6 +2,6 @@ args: ['python3', 'tulip.py', './tests/compiler_errors/struct_non_type_in_body.t
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/compiler_errors/struct_non_type_in_body.tlp:1:12 [ERROR]: Expected `WORD` in Struct `foo` member list. Found MiscTokenKind.INT:1 instead
+./tests/compiler_errors/struct_non_type_in_body.tlp:1:12 [ERROR]: Unrecognized token `MiscTokenKind.INT:1` in type list.
 --------------------------
 exit code: 1
