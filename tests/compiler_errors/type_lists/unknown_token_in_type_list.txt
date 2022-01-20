@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/type_lists/unknown_token_in_type_list.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/type_lists/unknown_token_in_type_list.tlp:1:8 [ERROR]: Unrecognized token `MiscTokenKind.INT:1` in type list.
+--------------------------
+exit code: 1

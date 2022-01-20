@@ -1,0 +1,2 @@
+with T
+struct foo T B end 

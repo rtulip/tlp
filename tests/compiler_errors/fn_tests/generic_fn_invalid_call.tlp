@@ -1,0 +1,4 @@
+with T
+fn foo T -> T do end
+
+1 foo drop

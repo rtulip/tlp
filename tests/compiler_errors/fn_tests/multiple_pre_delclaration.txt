@@ -1,0 +1,8 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/fn_tests/multiple_pre_delclaration.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/fn_tests/multiple_pre_delclaration.tlp:2:1 [ERROR]: Cannot pre-define a function more than once.
+    [NOTE]: Function `foo` initially defined here: ./tests/compiler_errors/fn_tests/multiple_pre_delclaration.tlp:1:1
+--------------------------
+exit code: 1

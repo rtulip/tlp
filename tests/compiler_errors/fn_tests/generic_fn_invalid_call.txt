@@ -1,0 +1,9 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/fn_tests/generic_fn_invalid_call.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/fn_tests/generic_fn_invalid_call.tlp:4:3 [ERROR]: Cannot call generic function `foo` without casting types first.
+    [NOTE]: Use a `WITH`-`DO` block to declare types.
+    [NOTE]: Undefined generics: [T]
+--------------------------
+exit code: 1

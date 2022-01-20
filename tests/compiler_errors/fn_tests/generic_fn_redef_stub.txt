@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/fn_tests/generic_fn_redef_stub.tlp']
+-------- stdout ----------
+Empty Program...
+--------------------------
+-------- stderr ----------
+--------------------------
+exit code: 1

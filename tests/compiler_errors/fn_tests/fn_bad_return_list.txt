@@ -1,0 +1,8 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/fn_tests/fn_bad_return_list.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/fn_tests/fn_bad_return_list.tlp:1:12 [ERROR]: Invalid signature. Arrow must be followed with at least one output type
+    [NOTE]: Consider removing the `->` if the function leaves nothing on the stack
+--------------------------
+exit code: 1

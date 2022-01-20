@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/type_lists/undefined_generics.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/type_lists/undefined_generics.tlp:1:12 [ERROR]: Unrecognized token `MiscTokenKind.WORD:T` in type list.
+--------------------------
+exit code: 1
