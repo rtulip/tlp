@@ -1,0 +1,2 @@
+fn foo int -> int do
+    dup putu

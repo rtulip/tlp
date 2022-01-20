@@ -1,0 +1,3 @@
+with T fn foo T -> T end
+
+with T fn foo T -> T do end

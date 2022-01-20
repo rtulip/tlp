@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/fn_tests/fn_bad_ident.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/fn_tests/fn_bad_ident.tlp:1:4 [ERROR]: Expected function name, found MiscTokenKind.INT instead
+--------------------------
+exit code: 1

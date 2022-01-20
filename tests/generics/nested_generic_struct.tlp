@@ -1,0 +1,9 @@
+with T
+struct foo T end
+
+with T
+struct bar
+    with T -> foo
+end
+
+1 cast(foo) cast(bar) drop

@@ -1,7 +1,0 @@
-args: ['python3', 'tulip.py', './tests/compiler_errors/fn_no_body.tlp']
--------- stdout ----------
---------------------------
--------- stderr ----------
-./tests/compiler_errors/fn_no_body.tlp:1:4 [ERROR]: Unclosed Function definition. Expected `END`, but found end of file instead
---------------------------
-exit code: 1

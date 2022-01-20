@@ -151,9 +151,11 @@ assert len(signatures) == len(OpType) - N_SUM_IGNORE + len(Intrinsic), \
 PRELUDE_SIZE = 0
 
 
-def compiler_error(predicate: bool, token: Token, msg):
+def compiler_error(predicate: bool, token: Token, msg: str, notes: List[str] = []):
     if not predicate:
         print(f"{token.loc} [ERROR]: {msg}", file=sys.stderr)
+        for note in notes:
+            print(f"    [NOTE]: {note}", file=sys.stderr)
         exit(1)
 
 
@@ -259,7 +261,6 @@ def parse_tokens_until_keywords(
                     operand=tok.value,
                     tok=tok,
                 ))
-
             elif tok.typ == MiscTokenKind.BOOL:
                 program.append(Op(
                     op=OpType.PUSH_BOOL,
@@ -274,9 +275,11 @@ def parse_tokens_until_keywords(
                     compiler_error(
                         len(fn_meta[tok.value].generics) == 0,
                         tok,
-                        f"""Cannot call generic function `{tok.value}` without casting types first.
-    [Note]: Use a `WITH`-`DO` block to declare types.
-    [Note]: Undefined generics: {pretty_print_arg_list(fn_meta[tok.value].generics)}"""
+                        f"Cannot call generic function `{tok.value}` without casting types first.",
+                        [
+                            f"Use a `WITH`-`DO` block to declare types.",
+                            f"Undefined generics: {pretty_print_arg_list(fn_meta[tok.value].generics)}"
+                        ]
                     )
 
                     program.append(Op(
@@ -308,18 +311,10 @@ def parse_tokens_until_keywords(
                 ))
 
             else:
-                compiler_error(
-                    False,
-                    tok,
-                    f"Unhandled MiscTokenKind: {tok}"
-                )
+                assert False, "Unreachable... Unknown MiscTokenKind"
 
         elif type(tok.typ) == Intrinsic:
-            compiler_error(
-                tok.typ in Intrinsic,
-                tok,
-                f"Unrecognized Intrinsic {tok}"
-            )
+            assert tok.typ in Intrinsic, f"Unknown Intrinsic {tok.typ}"
 
             if tok.typ == Intrinsic.CAST_TUPLE:
                 global PRELUDE_SIZE
@@ -788,11 +783,7 @@ def parse_type_list(
     allow_undefined_generics=False,
 ) -> Tuple[Token, List[DataType]]:
 
-    compiler_error(
-        len(tokens) > 0,
-        start_tok,
-        f"Expected type list, but found end of file instead"
-    )
+    assert len(tokens) > 0
 
     types: List[DataType] = []
     while True:
@@ -859,7 +850,8 @@ def parse_fn_signature(
         compiler_error(
             len(puts) > 0,
             tok,
-            "Invalid signature. Arrow must be followed with at least one output type"
+            "Invalid signature. Arrow must be followed with at least one output type",
+            ["Consider removing the `->` if the function leaves nothing on the stack"]
         )
         tok = end_tok
 
@@ -1074,20 +1066,33 @@ def parse_fn_from_tokens(
     program: Program = []
 
     # Chedk for redefinitions
-    if tok.typ == Keyword.END:
-        compiler_error(
-            fn_name not in fn_meta.keys(),
-            start_tok,
-            f"""Cannot pre-define a function more than once.
-    [Note]: Function `{fn_name}` initially defined here: {fn_meta[fn_name].tok.loc}"""
-        )
-    elif fn_name in fn_meta.keys():
-        compiler_error(
-            fn_meta[fn_name].stub,
-            fn_meta[fn_name].tok,
-            f"""Redefinition of function `{fn_name}`.
-    [Note]: Function `{fn_name}` initially defined here: {fn_meta[fn_name].tok.loc}"""
-        )
+    if fn_name in fn_meta.keys():
+        if tok.typ == Keyword.END:
+            compiler_error(
+                fn_name not in fn_meta.keys(),
+                start_tok,
+                f"Cannot pre-define a function more than once.",
+                [f"Function `{fn_name}` initially defined here: {fn_meta[fn_name].tok.loc}"]
+            )
+        else:
+            compiler_error(
+                fn_meta[fn_name].stub,
+                fn_meta[fn_name].tok,
+                f"Redefinition of function `{fn_name}`.",
+                [f"Function `{fn_name}` initially defined here: {fn_meta[fn_name].tok.loc}"]
+            )
+
+            stub_sig = fn_meta[fn_name].signature
+            compiler_error(
+                signature == fn_meta[fn_name].signature,
+                start_tok,
+                f"Function signature for {fn_name} must match pre-declaration.",
+                [
+                    f"Initially defined here: {fn_meta[fn_name].tok.loc}",
+                    f"Expected Signature: {pretty_print_arg_list(stub_sig.pops)} -> {pretty_print_arg_list(stub_sig.puts)}",
+                    f"Found Signature: {pretty_print_arg_list(signature.pops)} -> {pretty_print_arg_list(signature.puts)}"
+                ]
+            )
 
     check_for_name_conflict(
         fn_name,
@@ -1107,19 +1112,8 @@ def parse_fn_from_tokens(
         stub=tok.typ == Keyword.END,
         program=program
     )
+
     if tok.typ == Keyword.DO:
-
-        if fn_name in fn_meta.keys():
-
-            stub_sig = fn_meta[fn_name].signature
-            compiler_error(
-                signature == fn_meta[fn_name].signature,
-                start_tok,
-                f"""Function signature for {fn_name} must match pre-declaration.
-    [Note]: Initially defined here: {fn_meta[fn_name].tok.loc}
-    [Note]: Expected Signature: {pretty_print_arg_list(stub_sig.pops)} -> {pretty_print_arg_list(stub_sig.puts)}
-    [Note]: Found Signature: {pretty_print_arg_list(signature.pops)} -> {pretty_print_arg_list(signature.puts)}"""
-            )
 
         tok_to_end = parse_tokens_until_keywords(
             tokens,
@@ -1210,6 +1204,21 @@ def generate_accessor_tokens(start_tok: Token, new_struct: DataType, members: Ar
     return tokens
 
 
+def flatten_types(args: ArgList) -> ArgList:
+    types: List[DataType] = []
+    for T in args:
+        if T.struct:
+            types += flatten_types(StructMembers[T])
+            types.append(T)
+        elif T in TypeSignatures.keys():
+            types += flatten_types(TypeSignatures[T].pops)
+            types += flatten_types(TypeSignatures[T].puts)
+        else:
+            types.append(T)
+
+    return list(set(types))
+
+
 def parse_struct_from_tokens(
     start_tok: Token,
     tokens: List[Token],
@@ -1266,18 +1275,10 @@ def parse_struct_from_tokens(
     )
 
     # Todo make it so that this can nest indefiniately.
-    types_in_members = [T for T in members if T not in TypeSignatures.keys()]
-    fn_ptrs_in_members = [T for T in members if T in TypeSignatures.keys()]
-    for T in fn_ptrs_in_members:
-        pops = TypeSignatures[T].pops
-        puts = TypeSignatures[T].puts
-        types_in_members += [P for P in pops]
-        types_in_members += [P for P in puts]
-    types_in_members = list(set(types_in_members))
 
     for T in generic_types:
         compiler_error(
-            T in types_in_members,
+            T in flatten_types(members),
             start_tok,
             f"""Unused generic identifier `{T.ident}`.
     [Note]: Consider removing it from the `WITH` statement above"""

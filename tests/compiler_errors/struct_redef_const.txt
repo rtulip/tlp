@@ -1,7 +1,0 @@
-args: ['python3', 'tulip.py', './tests/compiler_errors/struct_redef_const.tlp']
--------- stdout ----------
---------------------------
--------- stderr ----------
-./tests/compiler_errors/struct_redef_const.tlp:2:8 [ERROR]: Redefinition of `foo`. Previously defined here: ./tests/compiler_errors/struct_redef_const.tlp:1:1
---------------------------
-exit code: 1
