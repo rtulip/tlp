@@ -1,0 +1,2 @@
+struct foo int end
+reserve foo 1 end

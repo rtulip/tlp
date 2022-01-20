@@ -1,0 +1,2 @@
+struct foo int end
+struct foo bool end

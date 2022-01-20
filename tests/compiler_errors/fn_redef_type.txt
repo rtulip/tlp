@@ -1,7 +1,0 @@
-args: ['python3', 'tulip.py', './tests/compiler_errors/fn_redef_type.tlp']
--------- stdout ----------
---------------------------
--------- stderr ----------
-./tests/compiler_errors/fn_redef_type.tlp:1:4 [ERROR]: Redefinition of Type `int`.
---------------------------
-exit code: 1

@@ -1,0 +1,2 @@
+reserve foo 1 end
+const foo 1 end 

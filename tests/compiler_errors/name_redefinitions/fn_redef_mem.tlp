@@ -1,0 +1,2 @@
+reserve foo 1 end
+fn foo do end

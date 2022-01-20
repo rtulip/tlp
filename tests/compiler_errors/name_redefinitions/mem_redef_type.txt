@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/name_redefinitions/mem_redef_type.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/name_redefinitions/mem_redef_type.tlp:2:9 [ERROR]: Redefinition of Type `foo`.
+--------------------------
+exit code: 1
