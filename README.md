@@ -137,6 +137,13 @@ putu    // Output: `3`
 putu    // Output: `2`
 ```
 
+### Function Pointers
+
+| Operation | Signature | Description |
+| --------- | --------- | ----------- |
+| `&<name>` | ` -> fn(T1, T2, ...) -> [R1, R2, ...]` | Pushes the pointer to function `<name>` onto the stack. |
+
+
 ### Control Flow
 
 ### If Conditions
@@ -163,7 +170,7 @@ end
 
 ### Functions
 
-``` rust
+```
 fn <name> <Input Types> (-> <Output types>) do
     <function body>
 end
@@ -178,6 +185,80 @@ fn bar bool do
 
 end
 ```
+
+### Generics Support
+
+Tlp has some basic support for generics. By default, `struct`s and functions have to use concrete types, and unkonwn types will be rejected. In order to make a type/function generic, prefix the definition with a `with` block.
+
+**Note:** Functions aren't type checked until a concrete instance is created. Track the issue [here](https://github.com/rtulip/tlp/issues/19).
+```
+with T
+struct pair
+  T T
+end
+
+with T
+fn consumes_t T do
+  // ...
+end
+```
+
+Generic structs are created in the same way as a normal struct with  `cast(<name>)`.
+```
+with T
+struct foo
+  T
+end
+
+// creates foo<int>
+1 cast(foo) 
+```
+
+Generic functions cannot be called directly and require a `with-do` block to turn the generic type into a concrete type.
+```
+with T
+fn generic_put T do
+    cast(int) putu
+end 
+
+1 with int do generic_put
+true with bool do generic_put
+3 cast(ptr) with ptr do generic_put
+// This wouldn't compile
+// "Hello World\n" with Str do generic_put
+```
+
+You can put generic types in signatures. To specify a generic `struct` to a type, then you need to use a `with ->` block.
+
+```
+with T
+struct Foo
+  T
+end 
+
+with T
+fn takes_foo
+  with T -> foo 
+do
+  // ...
+end
+```
+
+Structs/Functions can take generic function pointers. The type is declased with another `with` block.
+
+```
+with T
+struct foo
+  with T &fn T -> int T end
+end
+
+with A B
+fn foo 
+  with A B &fn A -> B end
+  with B &fn B end
+```
+
+
 
 ### Constant Expression
 `Tulip` supports a very limited number of operations as constant expressions.

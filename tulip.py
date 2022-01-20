@@ -1204,6 +1204,21 @@ def generate_accessor_tokens(start_tok: Token, new_struct: DataType, members: Ar
     return tokens
 
 
+def flatten_types(args: ArgList) -> ArgList:
+    types: List[DataType] = []
+    for T in args:
+        if T.struct:
+            types += flatten_types(StructMembers[T])
+            types.append(T)
+        elif T in TypeSignatures.keys():
+            types += flatten_types(TypeSignatures[T].pops)
+            types += flatten_types(TypeSignatures[T].puts)
+        else:
+            types.append(T)
+
+    return list(set(types))
+
+
 def parse_struct_from_tokens(
     start_tok: Token,
     tokens: List[Token],
@@ -1260,18 +1275,10 @@ def parse_struct_from_tokens(
     )
 
     # Todo make it so that this can nest indefiniately.
-    types_in_members = [T for T in members if T not in TypeSignatures.keys()]
-    fn_ptrs_in_members = [T for T in members if T in TypeSignatures.keys()]
-    for T in fn_ptrs_in_members:
-        pops = TypeSignatures[T].pops
-        puts = TypeSignatures[T].puts
-        types_in_members += [P for P in pops]
-        types_in_members += [P for P in puts]
-    types_in_members = list(set(types_in_members))
 
     for T in generic_types:
         compiler_error(
-            T in types_in_members,
+            T in flatten_types(members),
             start_tok,
             f"""Unused generic identifier `{T.ident}`.
     [Note]: Consider removing it from the `WITH` statement above"""
