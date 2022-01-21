@@ -2296,16 +2296,14 @@ def type_check_program(
                         tuple_size += t.size
 
                     tuple = DataType(
-                        ident=f"Anonstruct_{TUPLE_IDENT_COUNT}_{n}",
+                        ident=f"Group{pretty_print_arg_list(members)}",
                         struct=True,
                         size=tuple_size
                     )
 
-                    assert tuple.ident not in TypeDict
-                    assert tuple not in StructMembers
-
-                    TypeDict[tuple.ident] = tuple
-                    StructMembers[tuple] = members
+                    if tuple.ident not in TypeDict:
+                        TypeDict[tuple.ident] = tuple
+                        StructMembers[tuple] = members
 
                     sig = Signature(
                         pops=members.copy(),
@@ -2323,7 +2321,7 @@ def type_check_program(
                     t = type_stack[-1]
 
                     compiler_error(
-                        t.ident.startswith("Anonstruct_"),
+                        t.ident.startswith("Group["),
                         op.tok,
                         f"Expected to find an `GROUP` on the top of the stack. Found {t.ident} instead"
                     )
