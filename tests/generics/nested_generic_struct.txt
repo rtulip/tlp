@@ -4,3 +4,10 @@ args: ['python3', 'tulip.py', './tests/generics/nested_generic_struct.tlp']
 -------- stderr ----------
 --------------------------
 exit code: 0
+##########################
+args: ['./output']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+--------------------------
+exit code: 0

@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/generics/deep_nested_geerics.tlp']
+-------- stdout ----------
+Empty Program...
+--------------------------
+-------- stderr ----------
+--------------------------
+exit code: 1
