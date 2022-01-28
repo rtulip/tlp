@@ -740,8 +740,6 @@ def parse_generic_struct_type(
     concrete_name = f"{struct_name}{pretty_print_arg_list(concrete_types, open='<', close='>')}"
     concrete_members = convert_to_concrete_arg_list(
         gen_struct_t.members, concrete_types, gen_struct_t.generics)
-    # [T if not T.generic else
-    # concrete_types[indexOf(StructGenerics[gen_struct_t], T)] for T in StructMembers[gen_struct_t]]
 
     struct_t = StructType(
         ident=concrete_name,
@@ -890,6 +888,7 @@ def convert_type_to_concrete(T: DataType, concrete_types: List[DataType], generi
             generic=any([T.generic for T in T_concrete_members]),
             size=sum([T.size for T in T_concrete_members]),
             members=T_concrete_members,
+            base_ident=T.base_ident
 
         )
         return TypeDict[T_concrete_name]
@@ -2215,7 +2214,6 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
 
 
 def type_check_fn(fn: Function, fn_meta: FunctionMeta):
-
     _, out_stack, out_ret_stack = type_check_program(
         fn.program,
         fn_meta,
@@ -2229,11 +2227,11 @@ def type_check_fn(fn: Function, fn_meta: FunctionMeta):
     compiler_error(
         out_stack == fn.signature.puts,
         fn.tok,
-        f"""
-    Function `{fn.ident}` output doesn't match signature.
-    [Note]: Expected Output Stack: {pretty_print_arg_list(puts)}
-    [Note]: Actual Output Stack: {pretty_print_arg_list(out_stack)}
-        """
+        f"Function `{fn.ident}` output doesn't match signature.",
+        [
+            f"Expected Output Stack: {pretty_print_arg_list(puts)}",
+            f"Actual Output Stack: {pretty_print_arg_list(out_stack)}",
+        ]
     )
 
     compiler_error(
@@ -2424,6 +2422,15 @@ def type_check_program(
                         op.tok.value in fn_meta.keys(),
                         op.tok,
                         f"Unknown function `{op.tok.value}`"
+                    )
+
+                    compiler_error(
+                        len(fn_meta[op.tok.value].generics) == 0,
+                        op.tok,
+                        f"Cannot take a function pointer to a generic function.",
+                        [
+                            f"Function `{op.tok.value}` is generic over {pretty_print_arg_list(fn_meta[op.tok.value].generics)})",
+                        ]
                     )
 
                     fn_ptr_t = FnPtrType(
