@@ -17,27 +17,26 @@ struct baz
     end
 end
 
-with UNWRAP_BAR_T
-fn unwrap_bar
-    with UNWRAP_BAR_T -> bar
+fn unwrap_bar<Str>
+    with Str -> bar
     ->
-    with UNWRAP_BAR_T -> foo
+    with Str -> foo
 do
     split
 end
 
-with T
-fn takes_baz
-    with T -> bar
-    with T -> baz
-    ->
-    with T -> foo
-do
-    split call
-end
+// with T
+// fn takes_baz
+//     with T -> bar
+//     with T -> baz
+//     ->
+//     with T -> foo
+// do
+//     split call
+// end
 
-&unwrap_bar cast(baz)
-"Hello Generics.\n" cast(foo) cast(bar)
+&unwrap_bar<Str> cast(baz)
+// "Hello Generics.\n" cast(foo) cast(bar)
 
-with Str do takes_baz
-split puts
+// with Str do takes_baz
+// split puts

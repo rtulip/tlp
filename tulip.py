@@ -4,6 +4,7 @@ from enum import Enum, auto
 from operator import indexOf
 from subprocess import call
 from typing import List, Union, Dict, Optional, Any, Tuple, Callable
+from xxlimited import new
 from lexer import tokenize, Token, Intrinsic, MiscTokenKind, Keyword, tokenize_string
 import sys
 from copy import deepcopy
@@ -737,27 +738,19 @@ def parse_generic_struct_type(
     [Note]: These types were provided: {pretty_print_arg_list(concrete_types)}"""
     )
 
-    concrete_name = f"{struct_name}{pretty_print_arg_list(concrete_types, open='<', close='>')}"
-    concrete_members = convert_to_concrete_arg_list(
-        gen_struct_t.members, concrete_types, gen_struct_t.generics)
-
-    struct_t = StructType(
-        ident=concrete_name,
-        generic=any([T.generic for T in concrete_members]),
-        size=sum([T.size for T in concrete_members]),
-        members=concrete_members,
-        generics=generic_types,
-        base_ident=struct_name
-    )
-
-    TypeDict[concrete_name] = struct_t
+    struct_t = convert_type_to_concrete_top_down(
+        start_tok, gen_struct_t, concrete_types)
 
     return struct_t
 
 
 def parse_type_from_with_block(start_tok: Token, tokens: List[Token], generic_types: List[DataType]) -> DataType:
     tok, type_list = parse_type_list(
-        start_tok, tokens, generic_types, [Keyword.ARROW, Keyword.FN_TYPE])
+        start_tok,
+        tokens,
+        generic_types,
+        [Keyword.ARROW, Keyword.FN_TYPE],
+    )
 
     if tok.typ == Keyword.ARROW:
         return parse_generic_struct_type(tok, tokens, type_list, generic_types)
@@ -819,7 +812,10 @@ def parse_type_list(
             break
         elif end_tok.typ == Keyword.WITH:
             t = parse_type_from_with_block(
-                end_tok, tokens, generic_types)
+                end_tok,
+                tokens,
+                generic_types
+            )
             types.append(t)
         elif end_tok.typ == Keyword.FN_TYPE:
             fn_ptr_t = parse_fn_ptr_type(
@@ -923,6 +919,122 @@ def convert_to_concrete_arg_list(gen_list: List[DataType], concrete_types: List[
         type_list.append(convert_type_to_concrete(T, concrete_types, generics))
 
     return type_list
+
+
+def add_type_to_map(tok: Token, map: Dict[str, DataType], T: DataType, C: DataType) -> Dict[str, DataType]:
+    if T.ident in map.keys():
+        compiler_error(
+            map[T.ident] == C,
+            tok,
+            "Generic assignment error.",
+            [
+                f"Type `{T.ident}` was previously assigned to `{map[T.ident].ident}`",
+            ]
+        )
+    else:
+        map[T.ident] = C
+
+    return map
+
+
+def set_of_types(types: List[DataType]) -> List[DataType]:
+    unique: List[DataType] = []
+    for T in types:
+        if T not in unique:
+            unique.append(T)
+    return unique
+
+
+def convert_type_to_concrete_top_down(tok: Token, T: DataType, assignments: List[DataType]):
+
+    if isinstance(T, StructType):
+        assert isinstance(T, StructType)
+        members: List[DataType] = []
+        for t in T.members:
+            if t in T.generics:
+                members.append(assignments[indexOf(T.generics, t)])
+            else:
+                members.append(t)
+
+        return StructType(
+            ident=f"{T.ident}{pretty_print_arg_list(assignments, open='<', close='>')}",
+            generic=any(T.generic for T in members),
+            size=sum(T.size for T in members),
+            base_ident=T.base_ident,
+            members=members,
+            generics=set_of_types([T for T in T.members if T.generic])
+        )
+    elif isinstance(T, FnPtrType):
+        assert isinstance(T, FnPtrType)
+
+        assert False, "... function pointers haven't been updated yet"
+
+
+def convert_type_to_concrete_bottom_up(tok: Token, T: DataType, C: DataType):
+
+    map: Dict[str, DataType] = {}
+    if isinstance(T, StructType):
+        assert isinstance(T, StructType)
+
+        compiler_error(
+            isinstance(C, StructType),
+            tok,
+            f"Expected Struct type `{T.ident}`, but found `{C.ident}` instead."
+        )
+
+        assert isinstance(C, StructType)
+
+        compiler_error(
+            T.base_ident == C.base_ident,
+            tok,
+            f"Expected Struct of type `{T.ident}`, but found `{C.ident}` instead"
+        )
+
+        for t, c in zip(T.members, C.members):
+            new_t = convert_type_to_concrete_bottom_up(tok, t, c)
+            map = add_type_to_map(
+                tok,
+                map,
+                t,
+                new_t
+            )
+        new_generics = C.generics.copy()
+        new_members: List[DataType] = []
+        for t in T.members:
+            # this is just to make mypy happy i guess?
+            x = t
+            if t.ident in map.keys():
+                x = map[t.ident]
+            new_members.append(x)
+        new_size = sum([T.size for T in new_members])
+
+        return StructType(
+            ident=f"{T.base_ident}{pretty_print_arg_list(new_generics, open='<', close='>')}",
+            generic=any(T.generic for T in new_generics),
+            size=new_size,
+            base_ident=T.base_ident,
+            members=new_members,
+            generics=new_generics,
+        )
+
+    elif isinstance(T, FnPtrType):
+        assert isinstance(T, FnPtrType)
+
+        assert False, "Bottom-up cast of fnptrs isn't supported yet."
+
+    elif T.generic:
+        return C
+    else:
+        compiler_error(
+            T == C,
+            tok,
+            f"Failed to convert to concrete type.",
+            [
+                f"Expected Type `{T.ident}`, but found `{C.ident}` instead."
+            ]
+        )
+
+        return T
 
 
 def fn_reduce_generics(fn_name: str, fn_meta: FunctionMeta, concrete_types: List[DataType], generic_types: List[DataType]) -> str:
@@ -1976,143 +2088,39 @@ def generate_concrete_struct(op: Op, type_stack: List[DataType]) -> StructType:
     )
 
     concrete_members: List[DataType] = []
-    generic_map: Dict[DataType, DataType] = {}
-    for i, t in enumerate(gen_struct.members):
-        if isinstance(t, FnPtrType) and t.generic:
-            assert isinstance(t, FnPtrType)
-            fn_ptr = type_stack[-len(gen_struct.members) + i]
-            compiler_error(
-                isinstance(fn_ptr, FnPtrType),
-                op.tok,
-                f"""Generic Type resolution Failure.
-    [Note]: Expected funtion poiner like: {t.ident}.
-    [Note]: Type `{fn_ptr}` was found instead."""
-            )
+    generic_members: List[DataType] = []
+    generic_map: Dict[str, DataType] = {}
+    for T, C in zip(gen_struct.members, type_stack[-len(gen_struct.members):]):
+        new_type = convert_type_to_concrete_bottom_up(op.tok, T, C)
 
-            assert isinstance(fn_ptr, FnPtrType)
-            pops = convert_to_concrete_arg_list(
-                t.signature.pops,
-                fn_ptr.signature.pops,
-                gen_struct.generics
-            )
-            puts = convert_to_concrete_arg_list(
-                t.signature.puts,
-                fn_ptr.signature.puts,
-                gen_struct.generics
-            )
+        if isinstance(T, StructType):
+            assert isinstance(T, StructType)
+            assert isinstance(new_type, StructType)
 
-            for concrete_pop, gen_pop in zip(pops, t.signature.pops):
-                if gen_pop.generic:
-                    if gen_pop in generic_map.keys():
-                        compiler_error(
-                            generic_map[gen_pop] == concrete_pop,
-                            op.tok,
-                            f"""Generic Type Resolution Failure.
-    [Note]: Generic `{T.ident}` was assigned `{generic_map[gen_pop].ident}` yet `{concrete_pop.ident}` was found
-    [Note]: Signature: {pretty_print_arg_list(gen_struct.members)}
-    [Note]: Stack    : {pretty_print_arg_list(type_stack[-len(gen_struct.members):])}"""
-                        )
-                    else:
-                        generic_map[gen_pop] = concrete_pop
+            for t, c in zip(T.generics, new_type.generics):
+                generic_members.append(c)
+                generic_map = add_type_to_map(op.tok, generic_map, t, c)
+        elif T.generic:
+            generic_members.append(new_type)
+            generic_map = add_type_to_map(op.tok, generic_map, T, new_type)
 
-            for concrete_put, gen_put in zip(puts, t.signature.puts):
-                if gen_put.generic:
-                    if gen_put in generic_map.keys():
-                        compiler_error(
-                            generic_map[gen_put] == concrete_put,
-                            op.tok,
-                            f"""Generic Type Resolution Failure.
-    [Note]: Generic `{T.ident}` was assigned `{generic_map[gen_put].ident}` yet `{concrete_put.ident}` was found
-    [Note]: Signature: {pretty_print_arg_list(gen_struct.members)}
-    [Note]: Stack    : {pretty_print_arg_list(type_stack[-len(gen_struct.members):])}"""
-                        )
-                    else:
-                        generic_map[gen_put] = concrete_put
+        concrete_members.append(new_type)
 
-            sig = Signature(pops, puts)
-            concrete_name = f"fn{pretty_print_signature(sig)}"
-            if concrete_name not in TypeDict.keys():
-                TypeDict[concrete_name] = FnPtrType(
-                    ident=concrete_name,
-                    fn_name=fn_ptr.fn_name,
-                    signature=sig,
-                )
-
-            concrete_members.append(TypeDict[concrete_name])
-
-        elif t.generic and isinstance(t, StructType):
-            assert isinstance(t, StructType)
-            struct_t = type_stack[-len(gen_struct.members) + i]
-
-            compiler_error(
-                isinstance(struct_t, StructType),
-                op.tok,
-                f"Expected struct {t.ident}, but found {t.ident} instead."
-            )
-
-            assert isinstance(struct_t, StructType)
-
-            members = convert_to_concrete_arg_list(
-                t.members,
-                struct_t.members,
-                gen_struct.generics
-            )
-
-            for concrete_member, gen_member in zip(members, t.members):
-                if gen_member.generic:
-                    if gen_member in generic_map.keys():
-                        compiler_error(
-                            generic_map[gen_member] == concrete_member,
-                            op.tok,
-                            f"""Generic Type Resolution Failure.
-    [Note]: Generic `{T.ident}` was assigned `{generic_map[gen_member].ident}` yet `{concrete_member.ident}` was found
-    [Note]: Signature: {pretty_print_arg_list(gen_struct.members)}
-    [Note]: Stack    : {pretty_print_arg_list(type_stack[-len(gen_struct.members):])}"""
-                        )
-                    else:
-                        generic_map[gen_member] = concrete_member
-            concrete_name = f"{t.base_ident}{pretty_print_arg_list([generic_map[T] for T in t.generics], open='<', close='>')}"
-
-            if concrete_name not in TypeDict.keys():
-                TypeDict[concrete_name] = StructType(
-                    ident=concrete_name,
-                    size=sum([T.size for T in members]),
-                    base_ident=t.base_ident,
-                    members=members,
-                )
-            concrete_members.append(TypeDict[concrete_name])
-
-        elif t.generic:
-
-            assert t in gen_struct.generics, f"{gen_struct.ident}: {gen_struct.generics} -- {t}"
-            concrete_type = type_stack[-len(gen_struct.members) + i]
-            if t in generic_map.keys():
-                compiler_error(
-                    generic_map[t] == concrete_type,
-                    op.tok,
-                    f"""Generic Type Resolution Failure.
-    [Note]: Generic `{T.ident}` was assigned `{generic_map[t].ident}` yet `{concrete_type.ident}` was found
-    [Note]: Signature: {pretty_print_arg_list(gen_struct.members)}
-    [Note]: Stack: {pretty_print_arg_list(type_stack[-len(gen_struct.members):])}"""
-                )
-            else:
-                generic_map[t] = concrete_type
-            concrete_members.append(concrete_type)
-        else:
-            concrete_members.append(t)
-
-    concrete_struct_name = f"{gen_struct.ident}{pretty_print_arg_list(list(generic_map.values()), open='<', close='>')}"
+    concrete_struct_name = f"{gen_struct.ident}{pretty_print_arg_list(generic_members, open='<', close='>')}"
     if concrete_struct_name not in TypeDict.keys():
         TypeDict[concrete_struct_name] = StructType(
             ident=concrete_struct_name,
             size=sum(t.size for t in concrete_members),
             members=concrete_members,
-            base_ident=gen_struct.ident
+            base_ident=gen_struct.ident,
+            generics=generic_members
         )
 
     t = TypeDict[concrete_struct_name]
     assert isinstance(t, StructType)
     return t
+
+    exit(1)
 
 
 def struct_is_instance(T: DataType, S: StructType) -> bool:
