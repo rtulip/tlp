@@ -1,0 +1,44 @@
+use "std.tlp"
+
+with FOO_T
+struct foo FOO_T end
+
+with BAR_T
+struct bar
+    with BAR_T -> foo
+end
+
+with BAZ_T
+struct baz
+    with BAZ_T
+    &fn with BAZ_T -> bar
+        ->
+        with BAZ_T -> foo
+    end
+end
+
+fn unwrap_bar<Str>
+    with Str -> bar
+    ->
+    with Str -> foo
+do
+    split
+end
+
+with T
+fn takes_baz
+    with T -> bar
+    with T -> baz
+    ->
+    with T -> foo
+do
+    split call
+end
+
+"Hello Generics.\n" cast(foo) cast(bar)
+&unwrap_bar<Str>
+cast(baz)
+
+
+with Str do takes_baz
+split puts

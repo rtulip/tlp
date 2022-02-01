@@ -2,9 +2,8 @@ args: ['python3', 'tulip.py', './tests/type_check_errors/generic_type_resolution
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/type_check_errors/generic_type_resolution_fail.tlp:6:8 [ERROR]: Generic Type Resolution Failure.
-    [Note]: Generic `T` was assigned `int` yet `bool` was found
-    [Note]: Signature: [T T]
-    [Note]: Stack: [int bool]
+./tests/type_check_errors/generic_type_resolution_fail.tlp:6:8 [ERROR]: Generic assignment error.
+    [NOTE]: Cannot assign generic type `T` to `bool`.
+    [NOTE]: Type `T` was previously assigned to `int`
 --------------------------
 exit code: 1

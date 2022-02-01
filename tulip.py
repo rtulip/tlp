@@ -4,6 +4,7 @@ from enum import Enum, auto
 from operator import indexOf
 from subprocess import call
 from typing import List, Union, Dict, Optional, Any, Tuple, Callable
+from xxlimited import new
 from lexer import tokenize, Token, Intrinsic, MiscTokenKind, Keyword, tokenize_string
 import sys
 from copy import deepcopy
@@ -26,34 +27,12 @@ class OpType(Enum):
 class DataType:
     ident: str
     generic: bool = False
-    struct: bool = False
     size: int = 1
-    fnptr: Optional[str] = None
 
-
-INT = DataType("int")
-BOOL = DataType("bool")
-PTR = DataType("ptr")
-STR = DataType("Str", struct=True, size=2)
-T = DataType("T", generic=True)
-A = DataType("A", generic=True)
-B = DataType("B", generic=True)
-C = DataType("C", generic=True)
-D = DataType("D", generic=True)
-E = DataType("E", generic=True)
-F = DataType("F", generic=True)
 
 TUPLE_IDENT_COUNT = 0
 
-TypeDict: Dict[str, DataType] = {
-    "int": INT,
-    "bool": BOOL,
-    "ptr": PTR,
-}
-
 ArgList = List[DataType]
-StructMembers: Dict[DataType, ArgList] = {}
-StructGenerics: Dict[DataType, ArgList] = {}
 
 
 @ dataclass
@@ -71,7 +50,52 @@ class Signature:
     rputs: ArgList = field(default_factory=lambda: [])
 
 
-TypeSignatures: Dict[DataType, Signature] = {}
+@dataclass(frozen=True)
+class FnPtrType(DataType):
+    fn_name: Optional[str] = None
+    signature: Signature = Signature(pops=[], puts=[])
+    generics: ArgList = field(default_factory=lambda: [])
+
+
+@ dataclass(frozen=True)
+class StructType(DataType):
+    base_ident: str = ""
+    members: ArgList = field(default_factory=lambda: [])
+    generics: ArgList = field(default_factory=lambda: [])
+
+
+def compare_arg_list(L1: List[DataType], L2: List[DataType]) -> bool:
+
+    if len(L1) != len(L2):
+        return False
+
+    result = True
+    for T1, T2 in zip(L1, L2):
+        result &= T1.size == T2.size
+        result &= T1.ident == T2.ident
+
+    return result
+
+
+INT = DataType("int")
+BOOL = DataType("bool")
+PTR = DataType("ptr")
+STR = StructType("Str", size=2, members=[INT, PTR], base_ident="Str")
+T = DataType("T", generic=True)
+A = DataType("A", generic=True)
+B = DataType("B", generic=True)
+C = DataType("C", generic=True)
+D = DataType("D", generic=True)
+E = DataType("E", generic=True)
+F = DataType("F", generic=True)
+
+TypeDict: Dict[str, DataType] = {
+    "int": INT,
+    "bool": BOOL,
+    "ptr": PTR,
+}
+
+
 Program = List[Op]
 
 
@@ -680,7 +704,7 @@ def parse_generic_struct_type(
     tokens: List[Token],
     concrete_types: List[DataType],
     generic_types: List[DataType]
-) -> DataType:
+) -> StructType:
 
     compiler_error(
         len(tokens) > 0,
@@ -703,48 +727,48 @@ def parse_generic_struct_type(
         f"Unknown struct `{struct_name}`."
     )
 
+    gen_struct_t = TypeDict[struct_name]
     compiler_error(
-        TypeDict[struct_name].struct,
+        isinstance(gen_struct_t, StructType),
         struct_tok,
         f"Type `{struct_name}` is not a struct."
     )
+    assert isinstance(gen_struct_t, StructType)
 
-    gen_struct_t = TypeDict[struct_name]
     compiler_error(
-        gen_struct_t in StructGenerics.keys(),
+        gen_struct_t.generic,
         struct_tok,
         f"Struct `{struct_name}` is not generic."
     )
 
     compiler_error(
-        len(concrete_types) == len(StructGenerics[gen_struct_t]),
+        len(concrete_types) == len(gen_struct_t.generics),
         struct_tok,
         f"""Incorrect number of types provided.
-    [Note]: `{struct_name}` is generic over {pretty_print_arg_list(StructGenerics[gen_struct_t])}
+    [Note]: `{struct_name}` is generic over {pretty_print_arg_list(gen_struct_t.generics)}
     [Note]: These types were provided: {pretty_print_arg_list(concrete_types)}"""
     )
 
-    concrete_name = f"{struct_name}{pretty_print_arg_list(concrete_types, open='<', close='>')}"
-    concrete_members = convert_to_concrete_arg_list(
-        StructMembers[gen_struct_t], concrete_types, StructGenerics[gen_struct_t])
-    # [T if not T.generic else
-    # concrete_types[indexOf(StructGenerics[gen_struct_t], T)] for T in StructMembers[gen_struct_t]]
+    assignment_map: Dict[str, DataType] = {}
+    for t, c in zip(gen_struct_t.generics, concrete_types):
+        assignment_map[t.ident] = c
 
-    TypeDict[concrete_name] = DataType(
-        ident=concrete_name,
-        generic=any([T.generic for T in concrete_members]),
-        struct=True,
-        size=sum([T.size for T in concrete_members])
+    struct_t = convert_type_to_concrete_top_down(
+        start_tok,
+        gen_struct_t,
+        assignment_map
     )
-    StructMembers[TypeDict[concrete_name]] = concrete_members
-    StructGenerics[TypeDict[concrete_name]] = generic_types
 
-    return TypeDict[concrete_name]
+    return struct_t
 
 
 def parse_type_from_with_block(start_tok: Token, tokens: List[Token], generic_types: List[DataType]) -> DataType:
     tok, type_list = parse_type_list(
-        start_tok, tokens, generic_types, [Keyword.ARROW, Keyword.FN_TYPE])
+        start_tok,
+        tokens,
+        generic_types,
+        [Keyword.ARROW, Keyword.FN_TYPE],
+    )
 
     if tok.typ == Keyword.ARROW:
         return parse_generic_struct_type(tok, tokens, type_list, generic_types)
@@ -754,7 +778,7 @@ def parse_type_from_with_block(start_tok: Token, tokens: List[Token], generic_ty
     assert False, "... Unreachable"
 
 
-def parse_fn_ptr_type(start_tok: Token, tokens: List[Token], concrete_types: List[DataType], generic_types: List[DataType]) -> DataType:
+def parse_fn_ptr_type(start_tok: Token, tokens: List[Token], concrete_types: List[DataType], generic_types: List[DataType]) -> FnPtrType:
 
     tok, sig = parse_fn_signature(start_tok, tokens, generic_types)
     compiler_error(
@@ -763,15 +787,12 @@ def parse_fn_ptr_type(start_tok: Token, tokens: List[Token], concrete_types: Lis
         f"Unexpected keyword `{tok.typ}`. Expected `END`"
     )
 
-    t = DataType(
+    t = FnPtrType(
         ident=f'fn{pretty_print_signature(sig)}',
         generic=len(generic_types) > 0,
+        signature=sig
     )
 
-    if t not in TypeSignatures.keys():
-        TypeSignatures[t] = sig
-
-    assert t in TypeSignatures.keys()
     return t
 
 
@@ -809,13 +830,15 @@ def parse_type_list(
             break
         elif end_tok.typ == Keyword.WITH:
             t = parse_type_from_with_block(
-                end_tok, tokens, generic_types)
+                end_tok,
+                tokens,
+                generic_types
+            )
             types.append(t)
         elif end_tok.typ == Keyword.FN_TYPE:
             fn_ptr_t = parse_fn_ptr_type(
                 end_tok, tokens, [], generic_types)
             types.append(fn_ptr_t)
-            assert fn_ptr_t in TypeSignatures
         else:
             assert False, "... unreachable"
 
@@ -858,62 +881,234 @@ def parse_fn_signature(
     return tok, Signature(pops, puts)
 
 
-def convert_to_concrete_arg_list(gen_list: List[DataType], concrete_types: List[DataType], generics: List[DataType]):
-    type_list: List[DataType] = []
-    for T in gen_list:
-        if T.generic and T.struct:
+def add_type_to_map(tok: Token, map: Dict[str, DataType], T: DataType, C: DataType):
 
-            assert T in StructMembers.keys()
-            assert T in StructGenerics.keys()
+    if isinstance(T, StructType) and isinstance(C, StructType) and T.base_ident == C.base_ident:
+        assert isinstance(T, StructType)
+        assert isinstance(C, StructType), f"{T.ident} => {C.ident}"
+        t_members = T.members
+        c_members = C.members
 
-            T_members = StructMembers[T]
-            T_generics = StructGenerics[T]
-            T_assignment_tag = T.ident[indexOf(T.ident, '<'):]
+        for t, c in zip(t_members, c_members):
+            add_type_to_map(tok, map, t, c)
 
-            for G in T_generics:
-                T_assignment_tag = T_assignment_tag.replace(
-                    G.ident, concrete_types[indexOf(T_generics, G)].ident)
+    elif isinstance(T, FnPtrType):
+        assert isinstance(T, FnPtrType)
+        assert isinstance(C, FnPtrType)
+        t_pops = T.signature.pops
+        c_pops = C.signature.pops
+        t_puts = T.signature.puts
+        c_puts = C.signature.puts
 
-            T_concrete_name = f"{T.ident[:indexOf(T.ident, '<')]}{T_assignment_tag}"
-            T_concrete_members = convert_to_concrete_arg_list(
-                T_members, concrete_types, T_generics)
+        for t, c in zip(t_pops, c_pops):
+            add_type_to_map(tok, map, t, c)
+        for t, c in zip(t_puts, c_puts):
+            add_type_to_map(tok, map, t, c)
 
-            TypeDict[T_concrete_name] = DataType(
-                ident=T_concrete_name,
-                generic=any([T.generic for T in T_concrete_members]),
-                struct=True,
-                size=sum([T.size for T in T_concrete_members])
+    if T.ident in map.keys():
+        compiler_error(
+            map[T.ident] == C,
+            tok,
+            "Generic assignment error.",
+            [
+                f"Cannot assign generic type `{T.ident}` to `{C.ident}`.",
+                f"Type `{T.ident}` was previously assigned to `{map[T.ident].ident}`",
+            ]
+        )
+    else:
+        map[T.ident] = C
+
+
+def set_of_types(types: List[DataType]) -> List[DataType]:
+    unique: List[DataType] = []
+    for T in types:
+        if T not in unique:
+            unique.append(T)
+    return unique
+
+
+def convert_arg_list_to_concrete_top_down(tok: Token, types: ArgList, assignment_map: Dict[str, DataType]) -> ArgList:
+    new_args: List[DataType] = []
+    for T in types:
+        new_args.append(
+            convert_type_to_concrete_top_down(tok, T, assignment_map)
+        )
+    return new_args
+
+
+def convert_type_to_concrete_top_down(tok: Token, T: DataType, assignment_map: Dict[str, DataType]):
+
+    if isinstance(T, StructType):
+        assert isinstance(T, StructType)
+        members = convert_arg_list_to_concrete_top_down(
+            tok,
+            T.members,
+            assignment_map
+        )
+        ident = f"{T.base_ident}{pretty_print_arg_list(list(assignment_map.values()), open='<', close='>')}"
+        generics = []
+        for t in T.generics:
+            generics.append(assignment_map[t.ident])
+        return StructType(
+            ident=ident,
+            generic=any(T.generic for T in members),
+            size=sum(T.size for T in members),
+            base_ident=T.base_ident,
+            members=members,
+            generics=generics,
+        )
+    elif isinstance(T, FnPtrType):
+        assert isinstance(T, FnPtrType)
+        pops = convert_arg_list_to_concrete_top_down(
+            tok,
+            T.signature.pops,
+            assignment_map
+        )
+        puts = convert_arg_list_to_concrete_top_down(
+            tok,
+            T.signature.puts,
+            assignment_map
+        )
+        sig = Signature(pops, puts)
+        return FnPtrType(
+            ident=f"fn{pretty_print_signature(sig)}",
+            generic=any([pop.generic or put.generic for pop,
+                        put in zip(pops, puts)]),
+            size=1,
+            fn_name=T.fn_name,
+            signature=sig,
+            generics=[T for T in flatten_types(pops) if T.generic] +
+                     [T for T in flatten_types(puts) if T.generic]
+        )
+    elif T.ident in assignment_map:
+        return assignment_map[T.ident]
+
+    else:
+        return T
+
+
+def convert_type_to_concrete_bottom_up(tok: Token, T: DataType, C: DataType):
+
+    map: Dict[str, DataType] = {}
+    if isinstance(T, StructType):
+        assert isinstance(T, StructType)
+
+        compiler_error(
+            isinstance(C, StructType),
+            tok,
+            f"Expected Struct type `{T.ident}`, but found `{C.ident}` instead."
+        )
+
+        assert isinstance(C, StructType)
+
+        compiler_error(
+            T.base_ident == C.base_ident,
+            tok,
+            f"Expected Struct of type `{T.ident}`, but found `{C.ident}` instead"
+        )
+        new_members: List[DataType] = []
+
+        for t, c in zip(T.members, C.members):
+            new_t, new_map = convert_type_to_concrete_bottom_up(tok, t, c)
+            for k, v in new_map.items():
+                map[k] = v
+            add_type_to_map(
+                tok,
+                map,
+                t,
+                new_t
             )
-            StructMembers[TypeDict[T_concrete_name]] = T_concrete_members
-            type_list.append(TypeDict[T_concrete_name])
-        elif T.generic and T in TypeSignatures.keys():
-            sig = TypeSignatures[T]
-            pops = convert_to_concrete_arg_list(
-                sig.pops, concrete_types, generics)
-            puts = convert_to_concrete_arg_list(
-                sig.puts, concrete_types, generics
+            new_members.append(new_t)
+        new_generics = C.generics.copy()
+
+        new_size = sum([T.size for T in new_members])
+        new_ident = f"{T.base_ident}{pretty_print_arg_list(new_generics, open='<', close='>')}"
+        return (
+            StructType(
+                ident=new_ident,
+                generic=any(T.generic for T in new_generics),
+                size=new_size,
+                base_ident=T.base_ident,
+                members=new_members,
+                generics=new_generics,
+            ),
+            map
+        )
+
+    elif isinstance(T, FnPtrType):
+        assert isinstance(T, FnPtrType)
+
+        compiler_error(
+            isinstance(C, FnPtrType),
+            tok,
+            f"Expected Function Pointer Type type `{T.ident}`, but found `{C.ident}` instead."
+        )
+
+        assert isinstance(C, FnPtrType)
+
+        compiler_error(
+            len(T.signature.pops) == len(C.signature.pops) and
+            len(T.signature.puts) == len(C.signature.puts),
+            tok,
+            f"Function signatures don't match.",
+            [
+                f"Expected signature like: {pretty_print_signature(T.signature)}",
+                f"Found Signature:         {pretty_print_signature(C.signature)}",
+            ]
+        )
+
+        pops: List[DataType] = []
+        puts: List[DataType] = []
+        for t, c in zip(T.signature.pops, C.signature.pops):
+            new_t, new_map = convert_type_to_concrete_bottom_up(tok, t, c)
+            for k, v in new_map.items():
+                map[k] = v
+            add_type_to_map(
+                tok,
+                map,
+                t,
+                new_t
             )
-            concrete_sig = Signature(pops, puts)
-            concrete_fn_ptr_name = f"fn{pretty_print_signature(concrete_sig)}"
-            if concrete_fn_ptr_name not in TypeDict:
-                TypeDict[concrete_fn_ptr_name] = DataType(
-                    ident=concrete_fn_ptr_name,
-                    generic=any(T.generic for T in concrete_types),
-                    fnptr=T.fnptr
-                )
+            pops.append(new_t)
 
-                TypeSignatures[TypeDict[concrete_fn_ptr_name]] = concrete_sig
+        for t, c in zip(T.signature.puts, C.signature.puts):
+            new_t, new_map = convert_type_to_concrete_bottom_up(tok, t, c)
+            for k, v in new_map.items():
+                map[k] = v
+            add_type_to_map(
+                tok,
+                map,
+                t,
+                new_t
+            )
+            puts.append(new_t)
+        new_signature = Signature(pops, puts)
+        new_generics = C.generics.copy()
+        return (FnPtrType(
+            ident=f"fn{pretty_print_signature(new_signature)}",
+            generic=any(T.generic for T in new_generics),
+            size=1,
+            fn_name=C.fn_name,
+            signature=new_signature,
+            generics=new_generics
+        ), map)
 
-            type_list.append(TypeDict[concrete_fn_ptr_name])
-        elif T.generic:
-            type_list.append(concrete_types[indexOf(generics, T)])
-        else:
-            type_list.append(T)
+    elif T.generic:
+        return (C, map)
+    else:
+        compiler_error(
+            T == C,
+            tok,
+            f"Failed to convert to concrete type.",
+            [
+                f"Expected Type `{T.ident}`, but found `{C.ident}` instead."
+            ]
+        )
 
-    return type_list
+        return (T, map)
 
 
-def fn_reduce_generics(fn_name: str, fn_meta: FunctionMeta, concrete_types: List[DataType], generic_types: List[DataType]) -> str:
+def fn_reduce_generics(tok: Token, fn_name: str, fn_meta: FunctionMeta, concrete_types: List[DataType], generic_types: List[DataType]) -> str:
     if '<' in fn_name and '>' == fn_name[-1]:
         fn_generics = fn_meta[fn_name].generics
         fn_assignment_tag = fn_name[indexOf(fn_name, '<'):]
@@ -927,15 +1122,19 @@ def fn_reduce_generics(fn_name: str, fn_meta: FunctionMeta, concrete_types: List
     if concrete_name not in fn_meta.keys():
         fn_sig = fn_meta[fn_name].signature
         fn_generics = fn_meta[fn_name].generics
-        pops = convert_to_concrete_arg_list(
+        assignment_map: Dict[str, DataType] = {}
+        for t, c in zip(fn_generics, concrete_types):
+            assignment_map[t.ident] = c
+
+        pops = convert_arg_list_to_concrete_top_down(
+            tok,
             fn_sig.pops,
-            concrete_types,
-            fn_generics
+            assignment_map,
         )
-        puts = convert_to_concrete_arg_list(
+        puts = convert_arg_list_to_concrete_top_down(
+            tok,
             fn_sig.puts,
-            concrete_types,
-            fn_generics
+            assignment_map,
         )
         concrete_sig = Signature(pops, puts)
 
@@ -954,6 +1153,7 @@ def fn_reduce_generics(fn_name: str, fn_meta: FunctionMeta, concrete_types: List
                     assert op.operand is not None
                     if len(fn_meta[op.operand].generics) > 0:
                         op.operand = fn_reduce_generics(
+                            op.tok,
                             op.operand, fn_meta, concrete_types, generic_types)
 
     return concrete_name
@@ -1011,6 +1211,7 @@ def call_generic_fn_with(
     )
 
     concrete_name = fn_reduce_generics(
+        start_tok,
         fn_name, fn_meta, concrete_types, generic_types)
 
     program.append(Op(
@@ -1145,8 +1346,7 @@ def parse_fn_from_tokens(
         ))
 
 
-def generate_read_write_fns(start_tok: Token, new_struct: DataType, members: ArgList) -> List[Token]:
-    assert new_struct.struct
+def generate_read_write_fns(start_tok: Token, new_struct: StructType, members: ArgList) -> List[Token]:
 
     tokens: List[Token] = []
     name = new_struct.ident
@@ -1175,9 +1375,7 @@ def generate_read_write_fns(start_tok: Token, new_struct: DataType, members: Arg
     return tokens
 
 
-def generate_accessor_tokens(start_tok: Token, new_struct: DataType, members: ArgList) -> List[Token]:
-
-    assert new_struct.struct
+def generate_accessor_tokens(start_tok: Token, new_struct: StructType, members: ArgList) -> List[Token]:
 
     tokens: List[Token] = []
 
@@ -1207,16 +1405,22 @@ def generate_accessor_tokens(start_tok: Token, new_struct: DataType, members: Ar
 def flatten_types(args: ArgList) -> ArgList:
     types: List[DataType] = []
     for T in args:
-        if T.struct:
-            types += flatten_types(StructMembers[T])
+        if isinstance(T, StructType):
+            assert isinstance(T, StructType)
+            types += flatten_types(T.members)
             types.append(T)
-        elif T in TypeSignatures.keys():
-            types += flatten_types(TypeSignatures[T].pops)
-            types += flatten_types(TypeSignatures[T].puts)
+        elif isinstance(T, FnPtrType):
+            assert isinstance(T, FnPtrType)
+            types += flatten_types(T.signature.pops)
+            types += flatten_types(T.signature.puts)
         else:
             types.append(T)
 
-    return list(set(types))
+    flattened = []
+    for T in types:
+        if T not in flattened:
+            flattened.append(T)
+    return flattened
 
 
 def parse_struct_from_tokens(
@@ -1284,21 +1488,20 @@ def parse_struct_from_tokens(
     [Note]: Consider removing it from the `WITH` statement above"""
         )
 
-    new_struct = DataType(
+    new_struct = StructType(
         ident=name_tok.value,
-        struct=True,
         generic=len(generic_types) > 0,
-        size=sum(member.size for member in members)
+        size=sum(member.size for member in members),
+        members=members,
+        generics=generic_types,
+        base_ident=name_tok.value
     )
     TypeDict[new_struct.ident] = new_struct
-    StructMembers[new_struct] = members
 
     if len(generic_types) == 0:
         generated_tokens = generate_accessor_tokens(
             start_tok, new_struct, members)
         tokens += generated_tokens
-    else:
-        StructGenerics[new_struct] = generic_types
 
 
 def parse_if_block_from_tokens(
@@ -1862,13 +2065,13 @@ def type_check_while_block(ip: int, program: Program, fn_meta: FunctionMeta, cur
     compiler_error(
         stack_before == final_stack and ret_stack_before == final_ret_stack,
         program[ip].tok,
-        f"""
-    While loops cannot change the stack outside of the loop
-    [Note]: Stack at start of loop : {pretty_print_arg_list(stack_before)}
-    [Note]: Stack at end of loop   : {pretty_print_arg_list(final_stack)}
-    [Note]: Pushed at start of loop: {pretty_print_arg_list(ret_stack_before)}
-    [Note]: Pushed at end of loop  : {pretty_print_arg_list(final_ret_stack)}
-        """
+        f"While loops cannot change the stack outside of the loop",
+        [
+            f"Stack at start of loop : {pretty_print_arg_list(stack_before)}",
+            f"Stack at end of loop   : {pretty_print_arg_list(final_stack)}",
+            f"Pushed at start of loop: {pretty_print_arg_list(ret_stack_before)}",
+            f"Pushed at end of loop  : {pretty_print_arg_list(final_ret_stack)}",
+        ]
     )
 
     return (end_ip+1, final_stack, final_ret_stack)
@@ -1877,7 +2080,7 @@ def type_check_while_block(ip: int, program: Program, fn_meta: FunctionMeta, cur
 def assign_sizes(op: Op, sig: Signature):
 
     if op.operand == Intrinsic.DUP:
-        assert len(sig.pops) == 1
+        assert len(sig.pops) == 1, sig
         assert op.tok.value == None, f"{op.tok.loc} -- {op.op}:{op.operand} - {op.tok.value}"
         op.tok.value = sig.pops[0].size
     elif op.operand == Intrinsic.SWAP:
@@ -1899,8 +2102,8 @@ def assign_sizes(op: Op, sig: Signature):
 
 
 def check_args_match(args: ArgList, stack: ArgList) -> bool:
-    return [DataType(T.ident, T.generic, T.struct, T.size) for T in args] == \
-           [DataType(T.ident, T.generic, T.struct, T.size) for T in stack]
+    return [DataType(T.ident, T.generic, T.size) for T in args] == \
+           [DataType(T.ident, T.generic, T.size) for T in stack]
 
 
 def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType], return_stack: List[DataType]):
@@ -1948,121 +2151,52 @@ def evaluate_signature(op: Op, sig: Signature, type_stack: List[DataType], retur
     return_stack += sig.rputs
 
 
-def generate_concrete_struct(op: Op, type_stack: List[DataType]) -> DataType:
+def generate_concrete_struct(op: Op, type_stack: List[DataType]) -> StructType:
     assert isinstance(op.operand, Intrinsic)
     assert op.tok.value in TypeDict.keys()
     gen_struct = TypeDict[op.tok.value]
-    assert gen_struct in StructGenerics.keys()
-    assert gen_struct in StructMembers.keys()
-
-    generics = StructGenerics[gen_struct]
-    members = StructMembers[gen_struct]
-
+    assert isinstance(gen_struct, StructType)
     compiler_error(
-        len(type_stack) >= len(members),
+        len(type_stack) >= len(gen_struct.members),
         op.tok,
-        f"""Cannot assign generics during cast, insufficient elements on the stack.
-    [Note]: Expected: {pretty_print_arg_list(members)}
-    [Note]: Found:    {pretty_print_arg_list(type_stack)}"""
+        f"Cannot assign generics during cast, insufficient elements on the stack.",
+        [
+            f"Expected: {pretty_print_arg_list(gen_struct.members)}",
+            f"Found:    {pretty_print_arg_list(type_stack)}",
+        ]
     )
 
     concrete_members: List[DataType] = []
-    generic_map: Dict[DataType, DataType] = {}
-    for i, t in enumerate(members):
-        if t.generic and t in TypeSignatures.keys():
-            compiler_error(
-                type_stack[-len(members) + i] in TypeSignatures,
-                op.tok,
-                f"""Generic Type resolution Failure.
-    [Note]: Expected funtion poiner like: {t.ident}.
-    [Note]: Type `{type_stack[-len(members) + i]}` was found instead."""
-            )
-
-            pops = convert_to_concrete_arg_list(
-                TypeSignatures[t].pops,
-                TypeSignatures[type_stack[-len(members) + i]].pops,
-                generics
-            )
-            puts = convert_to_concrete_arg_list(
-                TypeSignatures[t].puts,
-                TypeSignatures[type_stack[-len(members) + i]].puts,
-                generics
-            )
-
-            for concrete_pop, gen_pop in zip(pops, TypeSignatures[t].pops):
-                if gen_pop.generic:
-                    if gen_pop in generic_map.keys():
-                        compiler_error(
-                            generic_map[gen_pop] == concrete_pop,
-                            op.tok,
-                            f"""Generic Type Resolution Failure.
-    [Note]: Generic `{T.ident}` was assigned `{generic_map[gen_pop].ident}` yet `{concrete_pop.ident}` was found
-    [Note]: Signature: {pretty_print_arg_list(members)}
-    [Note]: Stack    : {pretty_print_arg_list(type_stack[-len(members):])}"""
-                        )
-                    else:
-                        generic_map[gen_pop] = concrete_pop
-
-            for concrete_put, gen_put in zip(puts, TypeSignatures[t].puts):
-                if gen_put.generic:
-                    if gen_put in generic_map.keys():
-                        compiler_error(
-                            generic_map[gen_put] == concrete_put,
-                            op.tok,
-                            f"""Generic Type Resolution Failure.
-    [Note]: Generic `{T.ident}` was assigned `{generic_map[gen_put].ident}` yet `{concrete_put.ident}` was found
-    [Note]: Signature: {pretty_print_arg_list(members)}
-    [Note]: Stack    : {pretty_print_arg_list(type_stack[-len(members):])}"""
-                        )
-                    else:
-                        generic_map[gen_put] = concrete_put
-
-            sig = Signature(pops, puts)
-            concrete_name = f"fn{pretty_print_signature(sig)}"
-            if concrete_name not in TypeDict.keys():
-                TypeDict[concrete_name] = DataType(
-                    ident=concrete_name,
-                    fnptr=type_stack[-len(members) + i].fnptr
-                )
-
-                TypeSignatures[TypeDict[concrete_name]] = sig
-
-            concrete_members.append(TypeDict[concrete_name])
-
-        elif t.generic:
-
-            assert t in generics
-            concrete_type = type_stack[-len(members) + i]
-            if t in generic_map.keys():
-                compiler_error(
-                    generic_map[t] == concrete_type,
-                    op.tok,
-                    f"""Generic Type Resolution Failure.
-    [Note]: Generic `{T.ident}` was assigned `{generic_map[t].ident}` yet `{concrete_type.ident}` was found
-    [Note]: Signature: {pretty_print_arg_list(members)}
-    [Note]: Stack: {pretty_print_arg_list(type_stack[-len(members):])}"""
-                )
+    generic_map: Dict[str, DataType] = {}
+    for T, C in zip(gen_struct.members, type_stack[-len(gen_struct.members):]):
+        new_type, map = convert_type_to_concrete_bottom_up(op.tok, T, C)
+        for k, v in map.items():
+            if k in generic_map.keys():
+                assert generic_map[k] == v
             else:
-                generic_map[t] = concrete_type
-            concrete_members.append(concrete_type)
-        else:
-            concrete_members.append(t)
+                generic_map[k] = v
+        add_type_to_map(op.tok, generic_map, T, new_type)
+        concrete_members.append(new_type)
+    generic_members = [generic_map[t.ident] for t in gen_struct.generics]
 
-    concrete_struct_name = f"{gen_struct.ident}{pretty_print_arg_list(list(generic_map.values()), open='<', close='>')}"
+    concrete_struct_name = f"{gen_struct.ident}{pretty_print_arg_list(generic_members, open='<', close='>')}"
     if concrete_struct_name not in TypeDict.keys():
-        TypeDict[concrete_struct_name] = DataType(
+        TypeDict[concrete_struct_name] = StructType(
             ident=concrete_struct_name,
-            struct=True,
-            size=sum(t.size for t in concrete_members)
+            size=sum(t.size for t in concrete_members),
+            members=concrete_members,
+            base_ident=gen_struct.ident,
+            generics=generic_members
         )
 
-        StructMembers[TypeDict[concrete_struct_name]] = concrete_members
+    t = TypeDict[concrete_struct_name]
+    assert isinstance(t, StructType)
 
-    return TypeDict[concrete_struct_name]
+    return t
 
 
-def struct_is_instance(T: DataType, S: DataType) -> bool:
-    assert S.struct
+def struct_is_instance(T: DataType, S: StructType) -> bool:
+    assert isinstance(T, StructType)
     return T.ident.startswith(S.ident)
 
 
@@ -2096,7 +2230,8 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
     for i, T in enumerate(sig.pops):
         if T.generic:
             if not T in generic_map:
-                if T.struct:
+                if isinstance(T, StructType):
+                    assert isinstance(T, StructType)
                     compiler_error(
                         struct_is_instance(
                             type_stack[-n_args_expected:][i],
@@ -2144,7 +2279,11 @@ def assign_generics(op: Op, sig: Signature, type_stack: List[DataType], return_s
             op.tok,
             f"Undefined generic `{T.ident}`"
         )
+    # print(f"{op.op}:{op.operand}")
+    # for K, V in generic_map.items():
+    #     print(f"{K} -- {V}")
 
+    # new_sig = Signature([], [])
     new_sig = Signature(
         pops=[T if not T.generic else generic_map[T] for T in sig.pops],
         puts=[T if not T.generic else generic_map[T] for T in sig.puts],
@@ -2163,17 +2302,16 @@ def type_check_fn(fn: Function, fn_meta: FunctionMeta):
         starting_stack=fn.signature.pops.copy(),
         starting_rstack=[],
     )
-
     puts = fn.signature.puts
     assert isinstance(puts, list)
     compiler_error(
-        out_stack == fn.signature.puts,
+        compare_arg_list(out_stack, puts),
         fn.tok,
-        f"""
-    Function `{fn.ident}` output doesn't match signature.
-    [Note]: Expected Output Stack: {pretty_print_arg_list(puts)}
-    [Note]: Actual Output Stack: {pretty_print_arg_list(out_stack)}
-        """
+        f"Function `{fn.ident}` output doesn't match signature.",
+        [
+            f"Expected Output Stack: {pretty_print_arg_list(puts)}",
+            f"Actual Output Stack: {pretty_print_arg_list(out_stack)}",
+        ]
     )
 
     compiler_error(
@@ -2203,8 +2341,10 @@ def type_check_program(
             if len(fn.generics) != 0:
                 continue
             type_check_fn(fn, fn_meta)
+
     while ip < len(program):
         op = program[ip]
+        # print(f"{op.op}:{op.operand} -- {pretty_print_arg_list(type_stack)}")
         if any([cond(op) for cond in break_on]):
             break
 
@@ -2241,12 +2381,12 @@ def type_check_program(
                     )
 
                     t = TypeDict[op.tok.value]
-                    if t.struct:
-                        assert t in StructMembers.keys(), f"{t}"
+                    if isinstance(t, StructType):
+                        assert isinstance(t, StructType)
                         if t.generic:
                             t = generate_concrete_struct(op, type_stack)
                         sig = Signature(
-                            pops=StructMembers[t].copy(),
+                            pops=t.members,
                             puts=[t]
                         )
                     else:
@@ -2295,15 +2435,14 @@ def type_check_program(
                     for t in members:
                         tuple_size += t.size
 
-                    tuple = DataType(
+                    tuple = StructType(
                         ident=f"Group{pretty_print_arg_list(members)}",
-                        struct=True,
-                        size=tuple_size
+                        size=tuple_size,
+                        members=members,
                     )
 
                     if tuple.ident not in TypeDict:
                         TypeDict[tuple.ident] = tuple
-                        StructMembers[tuple] = members
 
                     sig = Signature(
                         pops=members.copy(),
@@ -2326,17 +2465,17 @@ def type_check_program(
                         f"Expected to find an `GROUP` on the top of the stack. Found {t.ident} instead"
                     )
 
-                    assert t in StructMembers.keys()
+                    assert isinstance(t, StructType)
 
                     compiler_error(
-                        len(StructMembers[t]) > op.tok.value,
+                        len(t.members) > op.tok.value,
                         op.tok,
-                        f"`GROUP` only has {len(StructMembers[t])} members. Cannot access element {op.tok.value}"
+                        f"`GROUP` only has {len(t.members)} members. Cannot access element {op.tok.value}"
                     )
 
                     sig = Signature(
                         pops=[t],
-                        puts=[StructMembers[t][op.tok.value]]
+                        puts=[t.members[op.tok.value]]
                     )
 
                     op.tok.value = (op.tok.value, t)
@@ -2350,15 +2489,15 @@ def type_check_program(
                     t = type_stack[-1]
 
                     compiler_error(
-                        t.struct,
+                        isinstance(t, StructType),
                         op.tok,
                         f"{op.op}:{op.operand} expects a `Struct` on the top of the stack. Found an `{t.ident}` instead"
                     )
 
-                    assert t in StructMembers.keys()
+                    assert isinstance(t, StructType)
                     sig = Signature(
                         pops=[t],
-                        puts=StructMembers[t]
+                        puts=t.members
                     )
                 elif op.operand == Intrinsic.ADDR_OF:
                     compiler_error(
@@ -2367,14 +2506,22 @@ def type_check_program(
                         f"Unknown function `{op.tok.value}`"
                     )
 
-                    fn_ptr_t = DataType(
-                        ident=f'fn{pretty_print_signature(fn_meta[op.tok.value].signature)}',
-                        generic=len(fn_meta[op.tok.value].generics) > 0,
-                        fnptr=op.tok.value
+                    compiler_error(
+                        len(fn_meta[op.tok.value].generics) == 0,
+                        op.tok,
+                        f"Cannot take a function pointer to a generic function.",
+                        [
+                            f"Function `{op.tok.value}` is generic over {pretty_print_arg_list(fn_meta[op.tok.value].generics)})",
+                        ]
                     )
 
-                    if fn_ptr_t not in TypeSignatures:
-                        TypeSignatures[fn_ptr_t] = fn_meta[op.tok.value].signature
+                    fn_ptr_t = FnPtrType(
+                        ident=f'fn{pretty_print_signature(fn_meta[op.tok.value].signature)}',
+                        generic=len(fn_meta[op.tok.value].generics) > 0,
+                        fn_name=op.tok.value,
+                        signature=fn_meta[op.tok.value].signature,
+                        generics=fn_meta[op.tok.value].generics
+                    )
 
                     sig = Signature(
                         pops=[],
@@ -2389,11 +2536,13 @@ def type_check_program(
 
                     t = type_stack.pop()
                     compiler_error(
-                        t in TypeSignatures.keys(),
+                        isinstance(t, FnPtrType),
                         op.tok,
                         f"Expected function pointer on the top of the stack, but found `{t.ident}` instead"
                     )
-                    sig = TypeSignatures[t]
+
+                    assert isinstance(t, FnPtrType)
+                    sig = t.signature
                 else:
                     sig = signatures[op.operand]
 
@@ -2661,7 +2810,7 @@ def compile_ops(out, ip, program: Program, fn_meta, reserved_memory, strings) ->
                 out.write(
                     f";; --- {op.op} {op.operand} {op.tok.value} --- \n")
                 index = op.tok.value[0]
-                members = StructMembers[op.tok.value[1]].copy()
+                members = op.tok.value[1].members.copy()
 
                 for i in range(index, len(members)-1):
                     out.write(f";; Drop\n")

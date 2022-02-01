@@ -2,12 +2,10 @@ args: ['python3', 'tulip.py', './tests/type_check_errors/while_loop_change_stack
 -------- stdout ----------
 --------------------------
 -------- stderr ----------
-./tests/type_check_errors/while_loop_change_stack.tlp:1:1 [ERROR]: 
-    While loops cannot change the stack outside of the loop
-    [Note]: Stack at start of loop : []
-    [Note]: Stack at end of loop   : [int]
-    [Note]: Pushed at start of loop: []
-    [Note]: Pushed at end of loop  : []
-        
+./tests/type_check_errors/while_loop_change_stack.tlp:1:1 [ERROR]: While loops cannot change the stack outside of the loop
+    [NOTE]: Stack at start of loop : []
+    [NOTE]: Stack at end of loop   : [int]
+    [NOTE]: Pushed at start of loop: []
+    [NOTE]: Pushed at end of loop  : []
 --------------------------
 exit code: 1

@@ -1,0 +1,37 @@
+with A B 
+struct alpha
+    A B
+end
+
+with T
+struct beta
+    with T T -> alpha
+end
+
+with T
+struct gamma
+    with T -> beta
+end
+
+with T
+struct epsilon
+    with T -> gamma
+end
+
+with T
+struct delta
+    with T -> epsilon
+end
+
+1 2 
+cast(alpha) // alpha<int, int>
+cast(beta)  // beta<int>
+cast(gamma) 
+cast(epsilon)
+cast(delta)
+split
+split
+split
+split
+split
+putu putu
