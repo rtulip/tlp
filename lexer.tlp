@@ -2,7 +2,6 @@ use "std.tlp"
 
 const INVALID 0 1 - end
 
-const SizeOf(Loc) SizeOf(int) SizeOf(int) SizeOf(Str) + + end
 struct Loc
     int // column
     int // line
@@ -46,7 +45,6 @@ const TokenValue.IntKind  0                       end
 const TokenValue.StrKind  TokenValue.IntKind  1 + end
 const TokenValue.BoolKind TokenValue.StrKind  1 + end
 const TokenValue.WordKind TokenValue.BoolKind 1 + end
-const SizeOf(TokenValue) SizeOf(int) SizeOf(Str) SizeOf(int) + + end
 struct TokenValue
     int // int value
     Str // Str Value
@@ -132,7 +130,6 @@ fn Token.Default -> Token do
     INVALID cast(Token)
 end
 
-const SizeOf(Token) SizeOf(Loc) SizeOf(TokenValue) SizeOf(int) + + end
 const TokensBufferCap 100000 end
 reserve TokensBufferData TokensBufferCap SizeOf(Token) * end
 reserve TokensBufferSize SizeOf(int) end
@@ -143,72 +140,6 @@ fn TokensBuffer.Init do
     TokensBufferData TokensBufferPtr !64
     0 TokensBufferSize !64
 
-end
-
-fn !int int ptr -> ptr do
-    dup SizeOf(int) ptr_offset push !64 pop
-end
-
-fn @int ptr -> int ptr do
-    // ptr ptr(int-S(int))
-    dup cast(int) SizeOf(int) - cast(ptr) push @64
-    pop
-end
-
-fn !ptr ptr ptr -> ptr do
-    dup SizeOf(ptr) ptr_offset push !64 pop
-end
-
-fn @ptr ptr -> ptr ptr do
-    dup cast(int) SizeOf(ptr) - cast(ptr) push @64 cast(ptr)
-    pop
-end
-
-fn !Str Str ptr -> ptr do
-    push split pop
-    !ptr !int
-end
-
-fn @Str ptr -> Str ptr do
-    @int @ptr 
-    push cast(Str) pop
-end
-
-fn !Loc Loc ptr -> ptr do
-    push split pop
-    !Str !int !int
-end
-
-fn @Loc ptr -> Loc ptr do
-    @int @int @Str
-    push cast(Loc) pop
-end
-
-fn !TokenValue TokenValue ptr -> ptr do
-    push split pop
-    !int !Str !int
-end
-
-fn @TokenValue ptr -> TokenValue ptr do
-    @int @Str @int
-    push cast(TokenValue) pop
-end
-
-fn !Token Token ptr -> ptr do
-    push split pop
-    !int !TokenValue !Loc
-end
-
-fn @Token ptr -> Token ptr do
-    @Loc @TokenValue @int
-    push cast(Token) pop
-end
-
-struct Array
-    int // Capacit 
-    ptr // Data
-    int // Size
-    ptr // Ptr
 end
 
 fn TokensBuffer.Push Token do
@@ -228,7 +159,7 @@ fn TokensBuffer.Index int -> Token do
     if dup TokensBufferSize @64 < do
         1 + SizeOf(Token) *
         TokensBufferData swap
-        ptr_offset cast(int) SizeOf(int) - cast(ptr)
+        ptr+ SizeOf(int) ptr-
         @Token drop
     else
         "[ERROR] Index " eputs eputd " is out of range for TokensBuffer[]\n" eputs
@@ -257,11 +188,11 @@ fn TokensBuffer.Reverse do
         TokensBuffer.Index
         pop swap push push
 
-        dup SizeOf(Token) * TokensBufferData swap ptr_offset
+        dup SizeOf(Token) * TokensBufferData swap ptr+
         pop swap !Token drop
         
         pop pop dup push
-        SizeOf(Token) * TokensBufferData swap ptr_offset
+        SizeOf(Token) * TokensBufferData swap ptr+
         !Token drop
 
         1 + pop 1 - 
@@ -799,7 +730,7 @@ fn tokenize_file Str do
             tokenize_line true
         else
             tokenize_line
-            false
+            false 
         end
     do
         swap Loc.IncrementLine swap
@@ -809,11 +740,11 @@ fn tokenize_file Str do
 
 end
 
-// "tlp.tlp" tokenize_file
+"lexer.tlp" tokenize_file
 // TokensBuffer.Reverse
 
 // 0
 // while dup TokensBuffer.Size < do 
 //     dup TokensBuffer.Index Token.Print
 //     1 +
-// end dropf
+// end drop
