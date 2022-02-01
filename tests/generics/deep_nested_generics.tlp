@@ -25,18 +25,20 @@ do
     split
 end
 
-// with T
-// fn takes_baz
-//     with T -> bar
-//     with T -> baz
-//     ->
-//     with T -> foo
-// do
-//     split call
-// end
+with T
+fn takes_baz
+    with T -> bar
+    with T -> baz
+    ->
+    with T -> foo
+do
+    split call
+end
 
-&unwrap_bar<Str> cast(baz)
-// "Hello Generics.\n" cast(foo) cast(bar)
+"Hello Generics.\n" cast(foo) cast(bar)
+&unwrap_bar<Str>
+cast(baz)
 
-// with Str do takes_baz
-// split puts
+
+with Str do takes_baz
+split puts

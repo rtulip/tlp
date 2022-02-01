@@ -1,0 +1,9 @@
+args: ['python3', 'tulip.py', './tests/generics/deep_nested_fnptr.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/generics/deep_nested_fnptr.tlp:32:6 [ERROR]: Generic assignment error.
+    [NOTE]: Cannot assign generic type `B` to `Str`.
+    [NOTE]: Type `B` was previously assigned to `bool`
+--------------------------
+exit code: 1

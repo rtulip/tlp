@@ -1,7 +1,14 @@
-args: ['python3', 'tulip.py', './tests/generics/deep_nested_geerics.tlp']
+args: ['python3', 'tulip.py', './tests/generics/deep_nested_generics.tlp']
 -------- stdout ----------
-Empty Program...
 --------------------------
 -------- stderr ----------
 --------------------------
-exit code: 1
+exit code: 0
+##########################
+args: ['./output']
+-------- stdout ----------
+Hello Generics.
+--------------------------
+-------- stderr ----------
+--------------------------
+exit code: 0

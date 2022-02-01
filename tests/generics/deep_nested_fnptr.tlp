@@ -1,0 +1,32 @@
+
+with A B 
+struct foo
+    with A B &fn 
+        with A &fn A end
+        with A B &fn 
+            A
+            with A B &fn A -> B end
+            ->
+            B
+        end
+        ->
+        with A &fn A end
+    end
+end 
+
+
+fn bar 
+    &fn int end
+    &fn 
+        int 
+        &fn int -> bool end
+        ->
+        Str
+    end
+    ->
+    &fn int end
+do  
+    drop
+end
+
+&bar cast(foo) drop

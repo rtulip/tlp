@@ -881,64 +881,6 @@ def parse_fn_signature(
     return tok, Signature(pops, puts)
 
 
-def convert_type_to_concrete(T: DataType, concrete_types: List[DataType], generics: List[DataType]):
-
-    if T.generic and isinstance(T, StructType):
-        assert isinstance(T, StructType)
-        assert T.base_ident != None
-
-        T_assignment_tag = T.ident[indexOf(T.ident, '<'):]
-
-        for G in T.generics:
-            T_assignment_tag = T_assignment_tag.replace(
-                G.ident, concrete_types[indexOf(T.generics, G)].ident)
-
-        T_concrete_name = f"{T.base_ident[:indexOf(T.ident, '<')]}{T_assignment_tag}"
-        T_concrete_members = convert_to_concrete_arg_list(
-            T.members, concrete_types, T.generics)
-
-        TypeDict[T_concrete_name] = StructType(
-            ident=T_concrete_name,
-            generic=any([T.generic for T in T_concrete_members]),
-            size=sum([T.size for T in T_concrete_members]),
-            members=T_concrete_members,
-            base_ident=T.base_ident
-
-        )
-        return TypeDict[T_concrete_name]
-    elif isinstance(T, FnPtrType):
-        assert isinstance(T, FnPtrType)
-        pops = convert_to_concrete_arg_list(
-            T.signature.pops, concrete_types, generics)
-        puts = convert_to_concrete_arg_list(
-            T.signature.puts, concrete_types, generics
-        )
-        concrete_sig = Signature(pops, puts)
-        concrete_fn_ptr_name = f"fn{pretty_print_signature(concrete_sig)}"
-        if concrete_fn_ptr_name not in TypeDict:
-            TypeDict[concrete_fn_ptr_name] = FnPtrType(
-                ident=concrete_fn_ptr_name,
-                generic=any(T.generic for T in concrete_types),
-                signature=concrete_sig,
-            )
-
-        return TypeDict[concrete_fn_ptr_name]
-    elif T.generic:
-        # print(f"generics: {pretty_print_arg_list(generics)}")
-        # print(f"T: {pretty_print_arg_list([T])}")
-        return concrete_types[indexOf(generics, T)]
-    else:
-        return T
-
-
-def convert_to_concrete_arg_list(gen_list: List[DataType], concrete_types: List[DataType], generics: List[DataType]):
-    type_list: List[DataType] = []
-    for T in gen_list:
-        type_list.append(convert_type_to_concrete(T, concrete_types, generics))
-
-    return type_list
-
-
 def add_type_to_map(tok: Token, map: Dict[str, DataType], T: DataType, C: DataType):
 
     if isinstance(T, StructType) and isinstance(C, StructType) and T.base_ident == C.base_ident:
@@ -996,10 +938,6 @@ def convert_arg_list_to_concrete_top_down(tok: Token, types: ArgList, assignment
 
 def convert_type_to_concrete_top_down(tok: Token, T: DataType, assignment_map: Dict[str, DataType]):
 
-    # print(f"Converting `{T.ident}` top down where: ")
-    # for t, c in assignment_map.items():
-    #     print(f"  {t} => {c.ident}")
-
     if isinstance(T, StructType):
         assert isinstance(T, StructType)
         members = convert_arg_list_to_concrete_top_down(
@@ -1011,7 +949,6 @@ def convert_type_to_concrete_top_down(tok: Token, T: DataType, assignment_map: D
         generics = []
         for t in T.generics:
             generics.append(assignment_map[t.ident])
-
         return StructType(
             ident=ident,
             generic=any(T.generic for T in members),
@@ -1029,7 +966,7 @@ def convert_type_to_concrete_top_down(tok: Token, T: DataType, assignment_map: D
         )
         puts = convert_arg_list_to_concrete_top_down(
             tok,
-            T.signature.pops,
+            T.signature.puts,
             assignment_map
         )
         sig = Signature(pops, puts)
@@ -1045,6 +982,7 @@ def convert_type_to_concrete_top_down(tok: Token, T: DataType, assignment_map: D
         )
     elif T.ident in assignment_map:
         return assignment_map[T.ident]
+
     else:
         return T
 
@@ -1081,13 +1019,10 @@ def convert_type_to_concrete_bottom_up(tok: Token, T: DataType, C: DataType):
                 new_t
             )
             new_members.append(new_t)
-        print(f"{T.ident} Generics: {pretty_print_arg_list(T.generics)}")
-        print(f"{C.ident} Generics: {pretty_print_arg_list(C.generics)}")
         new_generics = C.generics.copy()
 
         new_size = sum([T.size for T in new_members])
         new_ident = f"{T.base_ident}{pretty_print_arg_list(new_generics, open='<', close='>')}"
-        print(f"New Ident: {new_ident}")
         return (
             StructType(
                 ident=new_ident,
@@ -1173,7 +1108,7 @@ def convert_type_to_concrete_bottom_up(tok: Token, T: DataType, C: DataType):
         return (T, map)
 
 
-def fn_reduce_generics(fn_name: str, fn_meta: FunctionMeta, concrete_types: List[DataType], generic_types: List[DataType]) -> str:
+def fn_reduce_generics(tok: Token, fn_name: str, fn_meta: FunctionMeta, concrete_types: List[DataType], generic_types: List[DataType]) -> str:
     if '<' in fn_name and '>' == fn_name[-1]:
         fn_generics = fn_meta[fn_name].generics
         fn_assignment_tag = fn_name[indexOf(fn_name, '<'):]
@@ -1187,15 +1122,19 @@ def fn_reduce_generics(fn_name: str, fn_meta: FunctionMeta, concrete_types: List
     if concrete_name not in fn_meta.keys():
         fn_sig = fn_meta[fn_name].signature
         fn_generics = fn_meta[fn_name].generics
-        pops = convert_to_concrete_arg_list(
+        assignment_map: Dict[str, DataType] = {}
+        for t, c in zip(fn_generics, concrete_types):
+            assignment_map[t.ident] = c
+
+        pops = convert_arg_list_to_concrete_top_down(
+            tok,
             fn_sig.pops,
-            concrete_types,
-            fn_generics
+            assignment_map,
         )
-        puts = convert_to_concrete_arg_list(
+        puts = convert_arg_list_to_concrete_top_down(
+            tok,
             fn_sig.puts,
-            concrete_types,
-            fn_generics
+            assignment_map,
         )
         concrete_sig = Signature(pops, puts)
 
@@ -1214,6 +1153,7 @@ def fn_reduce_generics(fn_name: str, fn_meta: FunctionMeta, concrete_types: List
                     assert op.operand is not None
                     if len(fn_meta[op.operand].generics) > 0:
                         op.operand = fn_reduce_generics(
+                            op.tok,
                             op.operand, fn_meta, concrete_types, generic_types)
 
     return concrete_name
@@ -1271,6 +1211,7 @@ def call_generic_fn_with(
     )
 
     concrete_name = fn_reduce_generics(
+        start_tok,
         fn_name, fn_meta, concrete_types, generic_types)
 
     program.append(Op(
@@ -2444,7 +2385,6 @@ def type_check_program(
                         assert isinstance(t, StructType)
                         if t.generic:
                             t = generate_concrete_struct(op, type_stack)
-                            print(f"{t.ident}")
                         sig = Signature(
                             pops=t.members,
                             puts=[t]
