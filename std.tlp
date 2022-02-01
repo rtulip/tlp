@@ -5,21 +5,6 @@ fn NULL -> ptr do
     0 cast(ptr)
 end
 
-const PUTD_BUFFER_SIZE 20 end
-reserve putd_buffer PUTD_BUFFER_SIZE end
-
-const STATBUF_CAP 144 end
-const STATBUF_SIZE_OFFSET 48 end
-const FILE_BUFFER_CAP 1000000 end
-
-reserve statbuf STATBUF_CAP end
-fn statbuf.size ptr -> int do
-    cast(int) STATBUF_SIZE_OFFSET + cast(ptr) @64
-end
-
-reserve file_buffer FILE_BUFFER_CAP end
-
-
 // File permissions
 const O_RDONLY    0       end 
 const O_WRONLY    1       end
@@ -74,60 +59,37 @@ fn exit int do
     sys_exit
 end
 
-// Prints a string to stderr.
-// No error handling is done here.
-fn eputs Str do
-    split 2 cast(FileDesc) sys_write drop drop
-end     
-
-// Prints a String to stdout.
-// Error messages put to stderr.
-fn puts Str do
-    // dup Str.Size putu
-    dup split 1 cast(FileDesc)
-    
-    if sys_write swap drop do
-        drop    // Str
-    else
-        "Failed to write to stdout:\n" eputs
-        "Tried to write: `" eputs eputs "`\n" eputs
-        1 exit
-    end
-end
-
+fn eputs Str end
 
 // Prints a String to a file.
 // Error handling message is put to stderr
 fn fputs 
-    FileDesc Str
+    FileDesc Str  
     -> 
     FileDesc
 do 
-    2 group dup
-    dup group.1 Str.Size swap
-    dup group.1 Str.Data swap
-    group.0
-    
-    if sys_write swap drop do else
+    swap push split pop dup push
+    if sys_write swap drop not do
         "Failed to write to file:\n" eputs
-        "\t[Text]: " eputs 
-        dup group.1 eputs
         1 exit
     end
-
-    group.0
-
+    pop
 end
 
+fn puts Str do stdout swap fputs drop end
+fn eputs Str do stderr swap fputs drop end
+
+const PUTD_BUFFER_SIZE 20 end
+reserve putd_buffer PUTD_BUFFER_SIZE end
 fn fputd FileDesc int -> FileDesc do
 
     if dup 0 == do
         drop "0" fputs 
     else
     
-        putd_buffer cast(int) PUTD_BUFFER_SIZE 1 - + cast(ptr) swap
+        putd_buffer PUTD_BUFFER_SIZE 1 - ptr+ swap
 
-        // ptr int 
+        // FD ptr int 
         while dup 0 > do
 
             2 group dup split
@@ -137,7 +99,7 @@ fn fputd FileDesc int -> FileDesc do
             
             split
             10 / swap
-            cast(int) 1 - cast(ptr) swap
+            1 ptr- swap
 
         end drop
 
@@ -150,8 +112,10 @@ fn fputd FileDesc int -> FileDesc do
     end
 end
 
-fn fputb FileDesc bool  -> FileDesc do
+fn eputd int do stderr swap fputd drop end
+fn putd int do stdout swap fputd drop end
 
+fn fputb FileDesc bool  -> FileDesc do
     if do
         "True" fputs
     else
@@ -163,40 +127,20 @@ fn putb bool do
     stdout swap fputb drop
 end
 
-fn eputd int do
-    stderr swap fputd drop
-end
-fn putd int do
-
-    stdout swap fputd drop
-
-end
-
 fn fopen
     int int Str // Mode Flags Filename
     ->
     FileDesc
 do
-    // Save the filename on the stack before the Mode
-    3 group dup group.2 swap split
-
-    // Extract just the pointer to the data from Str
-    Str.Data 
-    
-    if sys_open do
-        // Drop the String as it's not needed for error handling
-        swap drop
-    else 
-        "Failed to open file: `" eputs
-        swap eputs
-        "`\n" eputs
-
+    Str.Data
+    if sys_open not do
+        "Failed to open file\n" eputs
         1 exit
     end
 end
 
 fn fclose FileDesc do
-    if sys_close do else 
+    if sys_close not do
         "Failed to close file\n" eputs
         1 exit
     end
@@ -204,14 +148,23 @@ end
 
 fn stat ptr Str do
     Str.Data
-    if sys_stat do else 
+    if sys_stat not do 
         "Stat failed\n" eputs
     end
 end
 
+
+const STATBUF_CAP 144 end
+const STATBUF_SIZE_OFFSET 48 end
+reserve statbuf STATBUF_CAP end
+fn statbuf.size ptr -> int do
+    STATBUF_SIZE_OFFSET ptr+ @64
+end
+
+const FILE_BUFFER_CAP 1000000 end
+reserve file_buffer FILE_BUFFER_CAP end
 fn load_file_to_str Str -> Str do
-    dup 
-    statbuf swap stat
+    dup statbuf swap stat
 
     if statbuf statbuf.size FILE_BUFFER_CAP > do 
         "File too big to read.\n" eputs
@@ -236,58 +189,38 @@ fn load_file_to_str Str -> Str do
 
 end 
 
-struct pair
-    int int 
-end
+fn exp 
+    int // base
+    int // exponent
+    -> 
+    int // result
+do
+    swap push 1 swap
 
-struct temp
-    pair int 
-end
+    while dup 0 > do
+        1 -
+        swap pop dup push * swap 
+    end drop
 
-fn mul int int -> int do 
-    cast(pair) 0 cast(temp)
-    // T[ P[a b] r] 
-    while dup temp.0 pair.1 0 > do
-        // P[a (b-1)] (r+a) 
-        dup split swap pair.0 + swap
-        temp.0 split 1 - cast(pair) swap cast(temp)
-    end
-    temp.1
-end
+    pop drop
 
-fn exp int int -> int do
-    cast(pair) 1 cast(temp)
-    // T[ P[a b] r] 
-    while dup temp.0 pair.1 0 > do
-        // P[a (b-1)] (r+a) 
-        dup split swap pair.0 mul swap
-        temp.0 split 1 - cast(pair) swap cast(temp)
-    end
-    temp.1
-
-end
-
-fn not bool -> bool do
-    if do
-        false
-    else 
-        true
-    end
 end
 
 fn Str.ToInt Str -> int do 
     if dup Str.Numeric do 
-        0 swap
+        0 push
         while dup Str.Size 0 > do 
 
-            // (10^(Str.Size - 1)*int(Str[0]))+result Str 
-            2 group dup dup dup
-            group.1 Str.Size 1 - 10 swap exp swap
-            group.1 0 Str.At ASCII_0 - mul swap
-            group.0 + swap
-            group.1 1 Str.ShiftRightBy
+            dup dup
+                Str.Size 1 - 10 swap exp swap
+                0 Str.At ASCII_0 -
+                *
+            pop + push
 
+            1 Str.ShiftRightBy 
         end drop
+
+        pop
         
     else 
         eputs "is not numeric!\n" eputs
@@ -295,10 +228,5 @@ fn Str.ToInt Str -> int do
         0
     end
 
-end
-
-fn ptr_offset ptr int -> ptr do
-    swap
-    cast(int) + cast(ptr)
 end
 

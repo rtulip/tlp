@@ -2,14 +2,6 @@ const ASCII_DOUBLE_QUOTE 34 end
 const ASCII_0 48 end
 const ASCII_9 ASCII_0 9 + end
 
-fn Str.Size Str -> int do 
-    split drop
-end 
-
-fn Str.Data Str -> ptr do 
-    split swap drop
-end
-
 fn Str.At Str int -> int do
     // TODO: Check bounds
     swap Str.Data cast(int) swap + cast(ptr) @8 

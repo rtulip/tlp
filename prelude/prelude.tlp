@@ -26,3 +26,28 @@ struct Str
     int
     ptr
 end
+
+fn Str.Size Str -> int do 
+    split drop
+end 
+
+fn Str.Data Str -> ptr do 
+    split swap drop
+end
+
+
+fn not bool -> bool do
+    if do
+        false
+    else 
+        true
+    end
+end
+
+fn ptr+ ptr int -> ptr do
+    swap cast(int) + cast(ptr)
+end
+
+fn ptr- ptr int -> ptr do
+    push cast(int) pop - cast(ptr)
+end
