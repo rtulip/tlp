@@ -1,0 +1,64 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Tulip",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#operators"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#types"
+		},
+		{
+			"include": "#strings"
+		}
+	],
+	"repository": {
+		"comments": {
+			"name": "comment.line.tlp",
+			"begin": "//",
+			"end": "\n"
+		},
+		"operators": {
+			"patterns": [
+				{
+					"name": "entity.name.function.tlp",
+					"match": "\\b(putu|dup|drop|swap|split|as|group|push|pop)\\b"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.tlp",
+					"match": "\\b(if|do|else|end|while|fn|struct|use|const|reserve|with|enum)\\b"
+				}
+			]
+		},
+		"types": {
+			"patterns": [
+				{
+					"name": "entity.name.type",
+					"match": "\\b(int|bool|Str|ptr)\\b"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.tlp",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.tlp",
+					"match": "\\\\."
+				}
+			]
+		}
+	},
+	"scopeName": "source.tlp"
+}
