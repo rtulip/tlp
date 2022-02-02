@@ -1,0 +1,1 @@
+cp -r tlp_lang_ext ~/.vscode/extensions

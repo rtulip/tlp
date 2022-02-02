@@ -1,0 +1,25 @@
+{
+    "name": "Tulip",
+    "displayName": "Tulip Language Extension",
+    "description": "Simple Syntax Highlighting for the Tulip Programming Language",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.62.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [{
+            "id": "tlp",
+            "aliases": ["Tulip", "tlp"],
+            "extensions": [".tlp"],
+            "configuration": "./language-configuration.json"
+        }],
+        "grammars": [{
+            "language": "tlp",
+            "scopeName": "source.tlp",
+            "path": "./syntaxes/tlp.tmLanguage.json"
+        }]
+    }
+}
