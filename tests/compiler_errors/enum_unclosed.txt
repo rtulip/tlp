@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/enum_unclosed.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/enum_unclosed.tlp:1:6 [ERROR]: Expected one of [<Keyword.END: 'end'>], but found end of file instead
+--------------------------
+exit code: 1
