@@ -14,6 +14,10 @@ fn Stk -> with Str -> Stack do
     cast(Stack)
 end
 
+Stk with Str do Stack.Print
+
+"StrStackData: " puts StrStackData cast(int) putu
+
 Stk StrStackData with Str do Stack.Init
 Stk "Hello Stacks... 0" with Str do Stack.Push
 Stk "Hello Stacks... 1" with Str do Stack.Push
@@ -37,3 +41,5 @@ end drop
     "Read: `" puts Stk with Str do Stack.Pop puts "`\n" puts
     1 +
 end drop
+
+Stk with Str do Stack.Print

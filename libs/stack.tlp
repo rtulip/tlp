@@ -1,0 +1,172 @@
+use "std.tlp"
+
+with T
+struct TypeInfo
+    with T &fn ptr -> T ptr end // read
+    with T &fn T ptr -> ptr end // write
+    int   // SizeOf(T)
+end
+
+with T
+fn TypeInfo.Read
+    with T -> TypeInfo
+    ->
+    with T &fn ptr -> T ptr end
+do
+    split drop drop
+end
+
+with T
+fn TypeInfo.Write
+    with T -> TypeInfo
+    ->
+    with T &fn T ptr -> ptr end
+do
+    split drop
+    swap drop
+end
+
+with T
+fn TypeInfo.Size
+    with T -> TypeInfo
+    ->
+    int
+do
+    split
+    swap drop
+    swap drop
+end
+
+with T
+fn TypeInfo.Offset
+    with T -> TypeInfo
+    int
+    ->
+    int
+do
+    push
+    with T do TypeInfo.Size
+    pop *
+end
+
+with T
+struct Stack 
+    with T -> TypeInfo
+    ptr   // ptr
+    ptr   // size 
+    int   // cap
+end 
+
+with T
+fn Stack.Print
+    with T -> Stack
+do
+    split
+    "Capacity: " puts putu
+    "Size: " puts @64 putu
+    "Ptr: " puts @64 putu
+    drop
+end
+
+with T
+fn Stack.Init
+    with T -> Stack
+    ptr
+do
+    cast(int) push
+    split drop
+    0 swap !64
+    pop swap !64
+
+    drop
+end
+
+with T
+fn Stack.Push
+    with T -> Stack
+    T
+do
+    
+    push split
+
+    push dup @64 pop 
+    if < not do
+        "Cannot push to stack. It's full.\n" eputs
+        1 exit
+    end 
+
+    dup @64 1 + swap !64
+
+    // TypeInfo<T> ptr
+    // T
+
+    pop swap dup push @64
+    cast(ptr) push swap pop swap 
+    with T do TypeInfo.Write call
+    pop !64
+
+end
+
+with T
+fn Stack.Pop
+    with T -> Stack
+    ->
+    T
+do
+    split drop
+
+    if dup @64 0 == do
+        "Cannot pop from stack. It's empty.\n" eputs
+        1 exit
+    end 
+
+    dup @64 1 - swap !64
+
+    // TypeInfo<T> ptr
+
+    dup push
+    @64 cast(ptr) swap
+    with T do TypeInfo.Read call
+    pop !64
+
+
+end
+
+with T
+fn Stack.At
+    with T -> Stack
+    int
+    ->
+    T
+do
+
+    push
+    split drop
+
+    @64 pop - 
+    if dup 0 < do
+        "[ERROR]: Index Error\n" eputs
+        1 exit
+    end
+
+    1 - 
+
+    swap push push dup
+    pop with T do TypeInfo.Offset
+    pop @64 swap - cast(ptr) swap
+    with T do TypeInfo.Read call drop
+
+end
+
+with T
+fn Stack.Size
+    with T -> Stack
+    ->
+    int
+do
+
+    split drop
+    @64 push
+    drop drop
+    pop
+end 

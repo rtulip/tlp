@@ -1,0 +1,40 @@
+args: ['python3', 'tulip.py', './tests/functional_tests/lists.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+--------------------------
+exit code: 0
+##########################
+args: ['./output']
+-------- stdout ----------
+Capacity: 10
+Size: 0
+Ptr: 0
+StrStackData: 7320808
+Item at index 0: Hello Stacks... 0
+Item at index 1: Hello Stacks... 1
+Item at index 2: Hello Stacks... 2
+Item at index 3: Hello Stacks... 3
+Item at index 4: Hello Stacks... 4
+Item at index 5: Hello Stacks... 5
+Item at index 6: Hello Stacks... 6
+Item at index 7: Hello Stacks... 7
+Item at index 8: Hello Stacks... 8
+Item at index 9: Hello Stacks... 9
+Read: `Hello Stacks... 9`
+Read: `Hello Stacks... 8`
+Read: `Hello Stacks... 7`
+Read: `Hello Stacks... 6`
+Read: `Hello Stacks... 5`
+Read: `Hello Stacks... 4`
+Read: `Hello Stacks... 3`
+Read: `Hello Stacks... 2`
+Read: `Hello Stacks... 1`
+Read: `Hello Stacks... 0`
+Capacity: 10
+Size: 0
+Ptr: 7320808
+--------------------------
+-------- stderr ----------
+--------------------------
+exit code: 0
