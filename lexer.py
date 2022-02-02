@@ -127,9 +127,9 @@ class Token:
         if self.typ == MiscTokenKind.STRING:
             return f"{self.loc}: {self.typ.name}: \"{repr(self.value)[1:-1]}\""
         elif type(self.typ) == Keyword:
-            return f"{self.loc}: Keyword: {self.typ.name}"
+            return f"{self.loc}: Keyword: {self.typ}"
         elif type(self.typ) == Intrinsic:
-            return f"{self.loc}: Intrinsic: {self.typ.name}"
+            return f"{self.loc}: Intrinsic: {self.typ}"
         else:
             return f"{self.loc}: {self.typ.name}: {self.value}"
 

@@ -156,4 +156,17 @@ do
     pop @64 swap - cast(ptr) swap
     with T do TypeInfo.Read call drop
 
+end
+
+with T
+fn Stack.Size
+    with T -> Stack
+    ->
+    int
+do
+
+    split drop
+    @64 push
+    drop drop
+    pop
 end 
