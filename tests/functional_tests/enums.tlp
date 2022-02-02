@@ -1,0 +1,10 @@
+use "std.tlp"
+enum foo
+    bar
+    baz
+    zap
+end
+
+foo.bar foo.ToStr puts " == " puts foo.bar putu
+foo.baz foo.ToStr puts " == " puts foo.baz putu
+foo.zap foo.ToStr puts " == " puts foo.zap putu

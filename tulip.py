@@ -796,6 +796,33 @@ def parse_fn_ptr_type(start_tok: Token, tokens: List[Token], concrete_types: Lis
     return t
 
 
+def parse_identifier_list(
+    start_tok: Token,
+    tokens: List[Token],
+    delimiters=List[Keyword],
+) -> Tuple[Token, List[str]]:
+    assert len(tokens) > 0
+
+    end_tok, input_tokens = tokens_until_keywords(
+        start_tok,
+        tokens,
+        delimiters,
+    )
+    identifiers: List[str] = []
+    for tok in input_tokens:
+        compiler_error(
+            tok.typ == MiscTokenKind.WORD,
+            tok,
+            f"Expected only identifiers in identifier list.",
+            [
+                f"Found {tok.typ}:{tok.value} in identifier list"
+            ]
+        )
+        identifiers.append(tok.value)
+
+    return (end_tok, identifiers)
+
+
 def parse_type_list(
     start_tok: Token,
     tokens: List[Token],
@@ -1423,6 +1450,73 @@ def flatten_types(args: ArgList) -> ArgList:
     return flattened
 
 
+def parse_enum_from_tokens(
+    start_tok: Token,
+    tokens: List[Token],
+    fn_meta: FunctionMeta,
+    const_values: ConstMap,
+    reserved_memory: MemoryMap
+):
+    assert start_tok.typ == Keyword.ENUM
+
+    compiler_error(
+        len(tokens) > 0,
+        start_tok,
+        f"Expected enum name, but found end of file instead"
+    )
+
+    name_tok = tokens.pop()
+    compiler_error(
+        name_tok.typ == MiscTokenKind.WORD,
+        name_tok,
+        f"Expected enum name, but found {name_tok.typ}:{name_tok.value} instead"
+    )
+
+    compiler_error(
+        len(tokens) > 0,
+        name_tok,
+        f"Expected enum variants, but found end of file instead"
+    )
+
+    assert isinstance(name_tok.value, str)
+
+    end_tok, variants = parse_identifier_list(
+        name_tok, tokens, [Keyword.END],
+    )
+
+    compiler_error(
+        end_tok.typ == Keyword.END,
+        end_tok,
+        f"Expected `END`, but found end of file instead"
+    )
+
+    compiler_error(
+        len(variants) > 0,
+        end_tok,
+        "Expected at least one identifier in the enum body"
+    )
+
+    generated_tokens: List[Token] = []
+    generated_tokens += tokenize_string(
+        f"const {name_tok.value}.{variants[0]} 0 end")
+    for i in range(1, len(variants)):
+        generated_tokens += tokenize_string(
+            f"const {name_tok.value}.{variants[i]} {name_tok.value}.{variants[i-1]} 1 + end")
+
+    generated_tokens += tokenize_string(
+        f"fn {name_tok.value}.ToStr int -> Str do")
+    generated_tokens += tokenize_string(
+        f"if dup {name_tok.value}.{variants[0]} == do \"{name_tok.value}.{variants[0]}\"")
+    for variant in variants[1:]:
+        generated_tokens += tokenize_string(
+            f"else dup {name_tok.value}.{variant} == do \"{name_tok.value}.{variant}\"")
+    generated_tokens += tokenize_string("else \"INVALID\" end")
+    generated_tokens += tokenize_string("swap drop end")
+    generated_tokens.reverse()
+
+    tokens += generated_tokens
+
+
 def parse_struct_from_tokens(
     start_tok: Token,
     tokens: List[Token],
@@ -1790,7 +1884,8 @@ def program_from_tokens(
         Keyword.WITH,
         Keyword.FN,
         Keyword.STRUCT,
-        Keyword.CONST
+        Keyword.CONST,
+        Keyword.ENUM,
     ]
 
     while len(tokens) > 0:
@@ -1807,8 +1902,6 @@ def program_from_tokens(
         )
 
         assert isinstance(tok, Token)
-        assert len(
-            expected_keywords) == 4, "Exhaustive handling of expected keywords"
 
         if tok.typ == Keyword.WITH:
             tok, types = parse_with_block_from_tokens(
@@ -1830,6 +1923,14 @@ def program_from_tokens(
                 tok,
                 tokens,
                 types,
+                fn_meta,
+                const_values,
+                reserved_memory
+            )
+        elif tok.typ == Keyword.ENUM:
+            parse_enum_from_tokens(
+                tok,
+                tokens,
                 fn_meta,
                 const_values,
                 reserved_memory
