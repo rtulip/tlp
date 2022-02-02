@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/enum_empty_body.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/enum_empty_body.tlp:1:10 [ERROR]: Expected at least one identifier in the enum body
+--------------------------
+exit code: 1

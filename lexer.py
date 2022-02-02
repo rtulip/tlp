@@ -29,6 +29,7 @@ class Keyword(Enum):
     CONST = 'const'
     RESERVE = 'reserve'
     WITH = 'with'
+    ENUM = 'enum'
 
 
 """Intrinsics

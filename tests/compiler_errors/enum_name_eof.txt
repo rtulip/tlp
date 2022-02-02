@@ -1,0 +1,7 @@
+args: ['python3', 'tulip.py', './tests/compiler_errors/enum_name_eof.tlp']
+-------- stdout ----------
+--------------------------
+-------- stderr ----------
+./tests/compiler_errors/enum_name_eof.tlp:1:6 [ERROR]: Expected enum variants, but found end of file instead
+--------------------------
+exit code: 1
