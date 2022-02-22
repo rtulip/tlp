@@ -1,0 +1,8 @@
+fn add_wrapper int int -> int do
+    +
+end
+
+10 5 add_wrapper putu
+
+// The line below will not compile
+// 10 "Hello World\n" add_wrapper putu

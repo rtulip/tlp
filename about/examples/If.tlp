@@ -1,0 +1,19 @@
+// This compiles
+if true do
+    1
+else false do
+    2
+else
+    3
+end
+drop
+
+// This doesnt
+if true do
+    1
+else false do
+    "Hello World\n"
+else
+    true
+end
+

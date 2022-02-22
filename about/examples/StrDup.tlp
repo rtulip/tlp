@@ -1,0 +1,15 @@
+use "std.tlp"
+fn dup_str1 Str -> Str Str do
+    dup
+end 
+
+fn dup_str2 int ptr -> int ptr int ptr do
+    // ptr int  
+    push dup            // copy the pointer
+    pop swap push dup   // 
+    pop swap
+end
+
+"Hello World\n" split dup_str2 
+cast(Str) puts
+cast(Str) puts 

@@ -1,0 +1,20 @@
+// Define a structure that is generic over type T
+with T
+struct Pair
+    T T
+end 
+
+// Define a function that operates on a generic type T
+with T
+fn use_pair
+    with T -> Pair  // How to define an instance of Pair<T>
+do
+    // do work...
+    drop
+end 
+
+// This doesn't compile
+5 "Hello World\n" cast(Pair)
+
+5 3 cast(Pair)
+with int do use_pair
