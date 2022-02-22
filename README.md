@@ -3,7 +3,8 @@ This is a compiled, statically typed, and stack based toy language inspired by [
 
 Ultimately, I'm aiming to make the compiler self-hosted. 
 
-**NOTE: Everything is subject to change during this early stage of development**
+**NOTE: THIS LANGUAGE IS NO LONGER UNDER ACTIVE DEVELOPMENT**
+* See the [about.md](./about/about.md) for a breakdown about the language and why I'm leaving it here.
 ## Examples
 Below are a few examples to demonstrate some of the basic concepts of the language.
 
