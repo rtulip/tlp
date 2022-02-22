@@ -1,0 +1,4 @@
+// This doesn't compile
+while true do
+    1
+end 
